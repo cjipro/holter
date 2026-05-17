@@ -27,11 +27,17 @@ dependencies = [
 
 [project.optional-dependencies]
 # UI extra — pulls in the Holter surfaces. Engine-only buyers can skip this.
-# Versions match bank-env APPROVED_LIBRARIES.md (Panel 1.4.4, HoloViews 1.19.1, Streamlit 1.46.0).
+# Versions match bank-env APPROVED_LIBRARIES.md (Panel 1.4.4, HoloViews 1.19.1,
+# Streamlit 1.46.0, FastAPI 0.136.1, Pydantic 2.13.4).
+# Note: uvicorn deliberately not pinned here — sits in the APPROVED_LIBRARIES.md
+# t-z gap pending bank-env confirmation. Document as a runtime dep in HOL-5
+# run instructions until confirmed.
 ui = [
     "panel>=1.4,<2",
     "holoviews>=1.19,<2",
     "streamlit>=1.46,<2",
+    "fastapi>=0.136,<1",
+    "pydantic>=2.13,<3",
 ]
 test = ["pytest>=8.0"]
 dev = ["pytest>=8.0", "ruff>=0.5"]
