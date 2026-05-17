@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+build/
+dist/
+wheels/
+pip-wheel-metadata/
+
+# Virtualenv
+.venv/
+venv/
+env/
+ENV/
+
+# Testing
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.mypy_cache/
+.ruff_cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Secrets (sister-concern: real .env lives in ../while-sleeping/.env)
+.env
+.env.local
+*.local.yaml
+*.local.json
+
+# Pulse runtime artifacts (generated when engine code arrives + runs)
+pulse_lineage_log.jsonl
+pulse_runtime/
+runtime_data/
+*.lineage.jsonl
+
+# FrictionBench
+frictionbench_bundles/
+submissions/
+scored/
+
+# Editor backups
+*.bak
+*.tmp

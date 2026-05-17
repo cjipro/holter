@@ -1,0 +1,128 @@
+# Sister-concern manifest for cjipro/holter.
+#
+# Codename: Holter (Norman Holter, inventor of the wearable continuous ECG monitor, 1949).
+# Public product: CJI Pulse — almost-real-time decision intelligence.
+# Importable package: pulse (engine identity preserved across any future repo moves).
+#
+# Filed under PULSE-90.
+
+repo:
+  name: cjipro/holter
+  codename: holter
+  codename_origin: |
+    Norman Holter (1914–1983), American biophysicist; invented the wearable
+    continuous ECG monitor in 1949. The Holter monitor catches arrhythmias by
+    recording during normal daily activity rather than in a clinic snapshot —
+    the medical analog of what Pulse does for customer journey friction.
+  public_product: CJI Pulse
+  importable_package: pulse
+  license: Apache-2.0
+  status: scaffolded
+  created: 2026-05-17
+  scaffolded_by_ticket: PULSE-90
+
+sister_concerns:
+
+  while_sleeping:
+    path: C:\Users\hussa\while-sleeping
+    github: cjipro/mil_streamlit
+    role: |
+      Sovereign MIL engine + Sonar publisher + Hodos seed.
+      Currently hosts the pulse/ engine tree pending migration to this repo.
+    crossing_files:
+      - .env (shared; this repo reads via ../while-sleeping/.env)
+
+  taq_app:
+    path: C:\Users\hussa\taq-app
+    github: cjipro/taq-app
+    role: |
+      Closed synthetic banking environment. Emits TAQ telemetry that Pulse
+      consumes via the crossing contract. Factory for Pulse + canvas for Lever.
+    crossing_files:
+      - contracts/cji_pulse_telemetry.yaml (TAQ side of TAQ→Pulse crossing)
+
+shared_resources:
+  env_file: ../while-sleeping/.env
+  atlassian_site: cjipro.atlassian.net
+  jira_project: PULSE
+  atlassian_cloud_id: d9b829b8-66af-42de-bc53-a79515365742
+  github_org: cjipro
+  cloudflare_token: shared via .env (CLOUDFLARE_API_TOKEN)
+
+crossing_contracts:
+
+  taq_to_pulse:
+    taq_side: ../taq-app/contracts/cji_pulse_telemetry.yaml
+    pulse_side: pulse/contracts/taq_contract.yaml
+    rule: |
+      Byte-equal or semantically equivalent at the corresponding version.
+      Validator on each side enforces the match. Drift = bug.
+    status: placeholder on TAQ side (TAQ-1); active on Pulse side (PULSE-87)
+
+  real_bank_to_pulse:
+    pulse_side: pulse/contracts/real_bank_contract.yaml
+    status: |
+      Placeholder at v0.1 — field mappings TBD on work-machine side.
+      deny_fields list is complete and load-bearing (PII boundary).
+    work_machine_side: detached (Hussain's work environment)
+
+  pulse_to_lever:
+    status: not yet defined
+    notes: Will be added when Lever lands (v2+ product surface).
+
+design_spine_shipped_2026_05_17:
+
+  PULSE-87:
+    title: Canonical engine schema + TAQ/real_bank adapter contracts
+    commit: 125b84a (in cjipro/mil_streamlit)
+    location: pulse/schema/ + pulse/adapters/ + pulse/contracts/
+
+  PULSE-88:
+    title: FrictionBench v0.1 — public benchmark for journey-friction detection
+    commit: 8715e6f (in cjipro/mil_streamlit)
+    location: pulse/frictionbench/
+
+  PULSE-89:
+    title: Lineage chain + synthesis interface + decision-pack metadata + audit query spec
+    commit: 9aeb7ab (in cjipro/mil_streamlit)
+    location: pulse/lineage/ + pulse/synthesis/ + pulse/decision_packs/ + pulse/convergence/ + pulse/audit/
+
+  PULSE-90:
+    title: Codename Holter + repo standup (this file)
+    location: C:\Users\hussa\holter\ (scaffolding only — pulse/ migration in follow-up ticket)
+
+architectural_locks_inherited:
+
+  build_focus: PULSE (locked 2026-04-30 PM; de-paused 2026-05-17)
+  non_llm_runtime: |
+    Pulse v1 is classical ML + statistics + Jinja2 templates. Zero LLM in the
+    runtime path. AI is dev-time only. See pulse/synthesis/SYNTHESIS_DESIGN.md.
+  naming_discipline: |
+    `taq` (synthetic) and `real_bank` (production) only. Never the real bank's
+    name in any artifact that travels (OSS code, GitHub, public docs).
+  hodos_relationship: |
+    Holter is one of multiple application repos. The general engine extraction
+    target is Hodos (currently deferred per architecture panel 2026-04-30 PM).
+    Patterns proven in Holter that generalise become candidates for the Hodos
+    seed when extraction begins.
+
+planned_pending_admin:
+
+  github_repo_creation:
+    owner: Hussain
+    eta: 5 minutes
+    steps:
+      - Create `cjipro/holter` on GitHub (private at first, Apache-2.0 license)
+      - Local `cd C:\Users\hussa\holter && git init -b main`
+      - `git remote add origin git@github.com:cjipro/holter.git`
+      - `git add -A && git commit -m "feat(PULSE-90): initial scaffolding"`
+      - `git push -u origin main`
+
+  pulse_tree_migration:
+    blocking: github_repo_creation
+    ticket: TBD (next ticket after PULSE-90 closes)
+    steps:
+      - `git mv pulse/ <holter-clone>/pulse/` (cross-repo move; copy + delete)
+      - Verify 163 tests still pass under the new location
+      - Update while-sleeping references that pointed at pulse/
+      - Commit on both sides
