@@ -7,7 +7,7 @@ name = "pulse"
 version = "0.1.0"
 description = "CJI Pulse — almost-real-time decision intelligence for customer journey friction. Codename: Holter."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11,<3.12"
 license = { text = "Apache-2.0" }
 authors = [{ name = "CJI" }]
 keywords = ["decision-intelligence", "customer-journey", "friction-detection", "regtech"]
@@ -17,11 +17,7 @@ classifiers = [
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
-    "Programming Language :: Python :: 3.14",
     "Topic :: Office/Business :: Financial",
     "Topic :: Scientific/Engineering :: Information Analysis",
 ]
@@ -30,6 +26,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# UI extra — pulls in the Holter surfaces. Engine-only buyers can skip this.
+# Versions match bank-env APPROVED_LIBRARIES.md (Panel 1.4.4, HoloViews 1.19.1).
+ui = [
+    "panel>=1.4,<2",
+    "holoviews>=1.19,<2",
+]
 test = ["pytest>=8.0"]
 dev = ["pytest>=8.0", "ruff>=0.5"]
 
@@ -41,7 +43,7 @@ Issues = "https://cjipro.atlassian.net/projects/PULSE"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["pulse*"]
+include = ["pulse*", "holter*"]
 exclude = ["pulse.tests*"]
 
 [tool.pytest.ini_options]
@@ -52,4 +54,4 @@ python_functions = ["test_*"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py311"
