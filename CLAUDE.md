@@ -98,39 +98,50 @@ work-tracking level, not the codebase level.
   PULSE-91 migration). PULSE-92 = next engine ticket.
 - **HOL-1** = UI framework decision panel (foundational). HOL-2 = next UI/build ticket.
 
-## Open decisions (read this first on next-session start)
+## Locked decisions
 
-### HOL-1 — UI framework decision (DEFERRED, pending pip library audit)
+### HOL-1 — Identity + surface architecture (LOCKED 2026-05-17)
 
-Panel ran 2026-05-17 (Harris / Gross / Rauch / Wathan), recommended
-SvelteKit. **Decision deferred** after Hussain reframe:
+**Identity statement (load-bearing):**
 
-> Sonar sits outside the bank → tech stack doesn't matter for fit.
-> Holter sits **inside** the bank → tech stack alignment matters.
-> Aesthetic = media news portal, not dashboard.
-> Initial preference: Python 3.11 + Streamlit.
+> Pulse is an evidentiary investigation engine for regulated decisions — it
+> converts customer-experience signals into decision packs whose every claim
+> carries declared confidence, fairness attestation, and a verifiable lineage,
+> and renders those packs across whatever altitude or surface the moment requires.
 
-Pip library audit required before lock. Hussain will share `pip freeze`
-from target bank environment at session start.
+**Holter = the bundle**, no separate brand surface. Engine-only buyers get
+PULSE; full-product buyers get Holter (which wraps Pulse with five UI surfaces).
 
-**Next-session re-evaluation pool** (revise candidates against reframe):
+**4-voice panel** (Cassie Kozyrkov / Avinash Kaushik / Jonathan Cherki / Ali Ghodsi)
+ran on the corrected frame after Hussain's reframe: "we are an intelligence
+company, we do decision packs, although our saying is decisions-not-dashboards
+we will have craving from stakeholders to see charts / KPIs." Pip-freeze from
+bank env validated framework candidates as env-present.
 
-| Stack | Bank-stack alignment | News-portal fit | Solo-maintenance | Already in MIL/Sonar? |
+**Five surfaces (one Python stack family, all from APPROVED_LIBRARIES.md):**
+
+| # | Surface | Stack | Audience | Ticket |
 |---|---|---|---|---|
-| Streamlit | High (data-team familiar) | Low (dashboard-shaped) | Light | Yes (`app/cji_app.py` + MIL pages) |
-| Jinja2 + FastAPI + Tailwind | High (standard Python web) | High (Sonar V4 proves it) | Light | Partial (Jinja2 in Sonar V4 publish chain; FastAPI not yet) |
-| FastAPI + HTMX + Tailwind | Medium (HTMX less known) | High | Lightest | No (HTMX not used) |
-| SvelteKit / Next.js | Low (JS toolchain) | Medium (achievable) | Heavy | No |
+| 1 | Pulse Home | Streamlit | All roles, entry feed | HOL-4 |
+| 2 | Investigation Workspace | Panel + HoloViz | Investigation consumer; three-altitude single surface | HOL-3 |
+| 3 | Pulse Monitor | Panel + Bokeh | Day-to-day analysts; chart-compressed Journey rendering | HOL-7 (gated) |
+| 4 | MLOps Console | Streamlit + FastAPI | ML eng + MRM; drift, fairness, lineage, synthesis governance | HOL-6 |
+| 5 | Pulse Platform API | FastAPI + Pydantic | Other tools (Tableau, Databricks Apps, bank portals) | HOL-5 |
 
-Likely answer: Streamlit for internal dev surfaces (analyst playgrounds) +
-Jinja2/FastAPI + Tailwind for customer-facing reading surface. Two surfaces,
-two stacks, both Python, both already in MIL stack.
+**Dashboard-tension resolution:** *rendering is the variable; investigation
+is the invariant.* Surface 3 is not a fourth altitude or a separate product —
+it is the Journey altitude rendered chart-first instead of narrative-first,
+with lineage hash + confidence band + Designed Ceiling on every chart.
 
-**HOL-1 status:** To Do. **Owner:** Hussain (next-session input) + Claude (panel re-run).
+**Build order:** HOL-3 (Workspace) → HOL-4 (Home) → HOL-5 (API) → HOL-6 (MLOps) → HOL-7 (Monitor). HOL-8 (pyproject 3.11 tightening) runs in parallel.
+
+**Hard launch gate on HOL-7:** decision-packs registry must have ≥40 templates covering FrictionBench 12-cell × multiple signatures. Currently 1 (`pulse/decision_packs/example_pack/`). Calendar dates do not unlock this; registry depth does.
+
+**Full plan + verification + risks:** `C:\Users\hussa\.claude\plans\adaptive-mapping-popcorn.md`
 
 ### Session log
 
-Latest session: [`docs/sessions/2026-05-17.md`](docs/sessions/2026-05-17.md) — full record of this repo's standup, pulse/ migration, and HOL-1 deferral.
+Latest session: [`docs/sessions/2026-05-17.md`](docs/sessions/2026-05-17.md) — full record of this repo's standup, pulse/ migration, and (now) HOL-1 closure.
 
 ## v1 design spine (already shipped, lives in while-sleeping pending migration)
 
