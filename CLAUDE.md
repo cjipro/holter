@@ -61,11 +61,36 @@ and the GitHub org.
 - **No ship without ticket.** Every change in this repo requires a Jira ticket
   in PULSE first (see `feedback_no_ship_without_ticket.md` memory).
 
-## Jira
+## Jira — TWO PROJECTS, ONE REPO
 
-- **Project:** PULSE (`cjipro.atlassian.net/jira/software/projects/PULSE`)
-- **Board:** Scrum
-- **Numbering:** PULSE-1+ (PULSE-87/88/89 are v1 design spine; PULSE-90 is this scaffolding)
+Per scrum-master panel decision 2026-05-17 (Cagan / Poppendieck / Cutler) the
+work in this repo is tracked across **two** Jira projects, split by buyer
+profile:
+
+| Project | Key | Board | Scope |
+|---|---|---|---|
+| **CJI Pulse** | PULSE | Scrum | Engine work — schemas, adapters, scoring, lineage, synthesis interface, FrictionBench, question classes. The platform offering — what engine licensees (Tableau / Looker / internal dashboard buyers) consume. |
+| **Holter** | HOL | Kanban | Build / UI / interface / product-experience work — UI framework, three-altitude design, sleek visual identity, deployment + CI/CD, hosted ops, partner trial flows, billing, customer-facing docs. The product offering — what full-product customers experience. |
+
+**Scope split rule of thumb:**
+- Engine API stability / schema evolution / scoring algorithms / anything an engine-licensee buyer cares about → **PULSE**
+- UI / design / deployment / hosted ops / partner onboarding / anything a full-product customer experiences → **HOL**
+
+Both projects contribute commits to **this repo**. The split is at the
+work-tracking level, not the codebase level.
+
+### URLs
+
+- PULSE: `cjipro.atlassian.net/jira/software/projects/PULSE`
+- HOL:   `cjipro.atlassian.net/jira/software/projects/HOL/boards/134`
+
+### Numbering
+
+- **PULSE-1..91** (current high water): includes the v1 design spine
+  (PULSE-87 schema / PULSE-88 FrictionBench / PULSE-89 lineage+synthesis) and
+  the build infra that brought Holter into existence (PULSE-90 scaffolding /
+  PULSE-91 migration). PULSE-92 = next engine ticket.
+- **HOL-1** = UI framework decision panel (foundational). HOL-2 = next UI/build ticket.
 
 ## v1 design spine (already shipped, lives in while-sleeping pending migration)
 

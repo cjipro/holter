@@ -44,10 +44,37 @@ sister_concerns:
 shared_resources:
   env_file: ../while-sleeping/.env
   atlassian_site: cjipro.atlassian.net
-  jira_project: PULSE
   atlassian_cloud_id: d9b829b8-66af-42de-bc53-a79515365742
   github_org: cjipro
   cloudflare_token: shared via .env (CLOUDFLARE_API_TOKEN)
+
+# Work in this repo is tracked across two Jira projects (scrum-master panel
+# decision 2026-05-17 Cagan / Poppendieck / Cutler).
+jira_projects:
+  pulse:
+    key: PULSE
+    board: Scrum
+    url: cjipro.atlassian.net/jira/software/projects/PULSE
+    scope: |
+      Engine work — schemas, adapters, scoring, lineage, synthesis interface,
+      FrictionBench, question classes. Platform offering. Engine licensees
+      consume this (e.g. Tableau / Looker integrators).
+  hol:
+    key: HOL
+    board: Kanban
+    url: cjipro.atlassian.net/jira/software/projects/HOL/boards/134
+    board_id: 134
+    scope: |
+      Build / UI / interface / product-experience work — UI framework,
+      three-altitude design, sleek visual identity, deployment + CI/CD,
+      hosted ops, partner trial flows, billing, customer-facing docs.
+      Product offering. Full-product customers experience this.
+  scope_split_rule: |
+    Engine API stability / schema evolution / scoring algorithms / anything
+    an engine-licensee buyer cares about → PULSE.
+    UI / design / deployment / hosted ops / partner onboarding / anything
+    a full-product customer experiences → HOL.
+    Both contribute commits to this repo; split is work-tracking-level only.
 
 crossing_contracts:
 
