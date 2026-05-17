@@ -92,6 +92,40 @@ work-tracking level, not the codebase level.
   PULSE-91 migration). PULSE-92 = next engine ticket.
 - **HOL-1** = UI framework decision panel (foundational). HOL-2 = next UI/build ticket.
 
+## Open decisions (read this first on next-session start)
+
+### HOL-1 — UI framework decision (DEFERRED, pending pip library audit)
+
+Panel ran 2026-05-17 (Harris / Gross / Rauch / Wathan), recommended
+SvelteKit. **Decision deferred** after Hussain reframe:
+
+> Sonar sits outside the bank → tech stack doesn't matter for fit.
+> Holter sits **inside** the bank → tech stack alignment matters.
+> Aesthetic = media news portal, not dashboard.
+> Initial preference: Python 3.11 + Streamlit.
+
+Pip library audit required before lock. Hussain will share `pip freeze`
+from target bank environment at session start.
+
+**Next-session re-evaluation pool** (revise candidates against reframe):
+
+| Stack | Bank-stack alignment | News-portal fit | Solo-maintenance | Already in MIL/Sonar? |
+|---|---|---|---|---|
+| Streamlit | High (data-team familiar) | Low (dashboard-shaped) | Light | Yes (`app/cji_app.py` + MIL pages) |
+| Jinja2 + FastAPI + Tailwind | High (standard Python web) | High (Sonar V4 proves it) | Light | Partial (Jinja2 in Sonar V4 publish chain; FastAPI not yet) |
+| FastAPI + HTMX + Tailwind | Medium (HTMX less known) | High | Lightest | No (HTMX not used) |
+| SvelteKit / Next.js | Low (JS toolchain) | Medium (achievable) | Heavy | No |
+
+Likely answer: Streamlit for internal dev surfaces (analyst playgrounds) +
+Jinja2/FastAPI + Tailwind for customer-facing reading surface. Two surfaces,
+two stacks, both Python, both already in MIL stack.
+
+**HOL-1 status:** To Do. **Owner:** Hussain (next-session input) + Claude (panel re-run).
+
+### Session log
+
+Latest session: [`docs/sessions/2026-05-17.md`](docs/sessions/2026-05-17.md) — full record of this repo's standup, pulse/ migration, and HOL-1 deferral.
+
 ## v1 design spine (already shipped, lives in while-sleeping pending migration)
 
 | Ticket | Artefact |
