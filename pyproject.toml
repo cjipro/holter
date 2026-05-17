@@ -27,10 +27,11 @@ dependencies = [
 
 [project.optional-dependencies]
 # UI extra — pulls in the Holter surfaces. Engine-only buyers can skip this.
-# Versions match bank-env APPROVED_LIBRARIES.md (Panel 1.4.4, HoloViews 1.19.1).
+# Versions match bank-env APPROVED_LIBRARIES.md (Panel 1.4.4, HoloViews 1.19.1, Streamlit 1.46.0).
 ui = [
     "panel>=1.4,<2",
     "holoviews>=1.19,<2",
+    "streamlit>=1.46,<2",
 ]
 test = ["pytest>=8.0"]
 dev = ["pytest>=8.0", "ruff>=0.5"]
