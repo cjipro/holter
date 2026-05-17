@@ -52,6 +52,12 @@ and the GitHub org.
 - **Naming discipline:** `taq` (synthetic) + `real_bank` (production) only.
   Never the real bank's name in OSS code, GitHub, or any travelling document.
   Mirrors MIL's P5 discipline.
+- **Approved Python libraries only.** Python is locked to **3.11**. Every
+  dependency added to this repo MUST be on the bank-env list at
+  [`APPROVED_LIBRARIES.md`](APPROVED_LIBRARIES.md). If a package you want
+  isn't on the list, find a substitute that is — or file a ticket proposing
+  it before adding. Mirrored verbatim in
+  `while-sleeping/APPROVED_LIBRARIES.md`; edit both together.
 - **Hodos relationship:** Holter is one application repo. The general engine
   extraction target is Hodos (deferred per architecture panel 2026-04-30 PM).
   Patterns proven in Holter that generalise become candidates for the Hodos
