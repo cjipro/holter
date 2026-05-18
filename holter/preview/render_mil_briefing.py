@@ -203,18 +203,20 @@ a { color: var(--blue); text-decoration: none; }
   background: transparent;
   border: 1px solid var(--border); border-radius: 4px;
   padding: 4px 22px 4px 10px;
-  font-family: var(--mono); font-size: 11px; color: var(--text-2);
+  font-family: var(--mono); font-size: 11px; color: var(--text-3);
   min-width: 130px; appearance: none;
   background-image: url("data:image/svg+xml;charset=utf-8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 8' fill='%234A7A8F'><path d='M0 0l7 8 7-8z'/></svg>");
   background-repeat: no-repeat; background-position: right 8px center;
-  background-size: 8px 6px; cursor: not-allowed; opacity: 0.85;
+  background-size: 8px 6px; cursor: not-allowed; opacity: 0.7;
 }
 .topnav-select.active {
   cursor: pointer; opacity: 1;
-  color: var(--text);
+  color: var(--blue);
+  border-color: rgba(0,174,239,0.35);
+  background-image: url("data:image/svg+xml;charset=utf-8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 8' fill='%2300AEEF'><path d='M0 0l7 8 7-8z'/></svg>");
 }
-.topnav-select.active:hover { border-color: var(--blue); }
-.topnav-select.active:focus { outline: none; border-color: var(--blue); }
+.topnav-select.active:hover { border-color: var(--blue); color: var(--text); }
+.topnav-select.active:focus { outline: none; border-color: var(--blue); color: var(--text); }
 .topnav-select.active.filter-on {
   border-color: var(--amber);
   color: var(--amber);
@@ -1717,8 +1719,13 @@ FILTER_JS = """
       else sel.classList.remove('filter-on');
     });
     if ($resetBtn) {
-      if (anyActive) $resetBtn.classList.add('active');
-      else $resetBtn.classList.remove('active');
+      if (anyActive) {
+        $resetBtn.classList.add('active');
+        $resetBtn.removeAttribute('hidden');
+      } else {
+        $resetBtn.classList.remove('active');
+        $resetBtn.setAttribute('hidden', '');
+      }
     }
 
     writeURLState();
@@ -1758,7 +1765,9 @@ def render_topnav(packs: list[dict]) -> str:
                        for p in packs if (p["hypothesis"] or {}).get("screen_id")})
     owners = sorted({a for p in packs for a in p["meta"].get("authors", [])})
 
-    product_opts = '<option value="">all packs · {n}</option>\n'.format(n=len(packs))
+    # Dimension name lives INSIDE the option label so we don't need an
+    # external <label> next to each <select>. Self-describing dropdowns.
+    product_opts = f'<option value="">Product · all packs · {len(packs)}</option>\n'
     sorted_packs = sorted(packs, key=lambda p: (p["hypothesis"] or {}).get("cell_id", 99))
     for p in sorted_packs:
         h = p["hypothesis"] or {}
@@ -1766,59 +1775,41 @@ def render_topnav(packs: list[dict]) -> str:
         sig = h.get("signature_id", "—").replace("_", " ")
         product_opts += (
             f'<option value="{p["meta"]["pack_name"]}">'
-            f'cell {cell} · {sig}</option>\n'
+            f'Product · cell {cell} · {sig}</option>\n'
         )
 
-    owner_opts = f'<option value="">all teams · {len(owners)}</option>\n'
+    owner_opts = f'<option value="">Owner · all teams · {len(owners)}</option>\n'
     for o in owners:
-        owner_opts += f'<option value="{o}">{o}</option>\n'
+        owner_opts += f'<option value="{o}">Owner · {o}</option>\n'
 
-    domain_opts = f'<option value="">all journeys · {len(domains)}</option>\n'
+    domain_opts = f'<option value="">Domain · all journeys · {len(domains)}</option>\n'
     for d in domains:
-        domain_opts += f'<option value="{d}">{d}</option>\n'
+        domain_opts += f'<option value="{d}">Domain · {d}</option>\n'
 
     return f'''
 <header class="app-topnav">
   <div class="topnav-brand">
     <span class="brand-logo">CJI&nbsp;PULSE</span>
-    <span class="brand-tagline">Decision Intelligence · briefing v0</span>
   </div>
   <div class="topnav-controls">
-    <div class="topnav-control-group">
-      <span class="topnav-select-label">Product</span>
-      <select class="topnav-select active" id="filter-product" data-filter="packname">
-        {product_opts}
-      </select>
-    </div>
-    <div class="topnav-control-group">
-      <span class="topnav-select-label">Owner</span>
-      <select class="topnav-select active" id="filter-owner" data-filter="author">
-        {owner_opts}
-      </select>
-    </div>
-    <div class="topnav-control-group">
-      <span class="topnav-select-label">Domain</span>
-      <select class="topnav-select active" id="filter-domain" data-filter="domain">
-        {domain_opts}
-      </select>
-    </div>
-    <div class="topnav-control-group">
-      <span class="topnav-select-label">Date</span>
-      <select class="topnav-select" disabled title="Date filter — packs don't yet carry detection timestamps (HOL-10 phase later)">
-        <option>last 7 days</option>
-      </select>
-    </div>
-    <button class="topnav-reset" id="filter-reset" type="button" title="Reset filters (Esc)">Reset</button>
+    <select class="topnav-select active" id="filter-product" data-filter="packname">
+      {product_opts}
+    </select>
+    <select class="topnav-select active" id="filter-owner" data-filter="author">
+      {owner_opts}
+    </select>
+    <select class="topnav-select active" id="filter-domain" data-filter="domain">
+      {domain_opts}
+    </select>
+    <select class="topnav-select" disabled title="Date — packs don't yet carry detection timestamps">
+      <option>Date · last 7 days</option>
+    </select>
+    <button class="topnav-reset" id="filter-reset" type="button" title="Reset filters (Esc)" hidden>Reset</button>
   </div>
   <div class="topnav-utility">
-    <span class="topnav-icon" title="Search packs (click or press /)">⌕&nbsp;Search</span>
-    <span class="topnav-divider"></span>
-    <span class="topnav-icon" title="Notifications (HOL-10 phase 3)">
-      🔔<span class="topnav-icon-badge">3</span>
-    </span>
+    <span class="topnav-icon" title="Search packs (click or press /)">⌕</span>
+    <span class="topnav-icon" title="Notifications (HOL-10 phase 3)">🔔</span>
     <span class="topnav-icon" title="Help / Canvas guide (HOL-10 phase 3)">?</span>
-    <span class="topnav-icon" title="Settings (HOL-10 phase 3)">⚙</span>
-    <span class="topnav-divider"></span>
     <span class="topnav-avatar" title="Hussain Ahmed">HA</span>
   </div>
 </header>
