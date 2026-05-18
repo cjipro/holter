@@ -406,6 +406,173 @@ a { color: var(--blue); text-decoration: none; }
   width: 1px; height: 22px; background: var(--border); margin: 0 4px;
 }
 
+/* HOL-10 phase 3 — utility-cluster panels (notifications / canvas guide /
+   settings / avatar menu). Buttons get default-button reset; panels are
+   fixed-positioned under the topnav with right-anchoring per panel.
+   ──────────────────────────────────────────────────────────────────── */
+button.topnav-icon, button.topnav-avatar {
+  background: transparent; border: 0; font-family: var(--mono); cursor: pointer;
+  color: inherit;
+}
+button.topnav-icon { padding: 4px 8px; }
+button.topnav-icon:focus-visible, button.topnav-avatar:focus-visible {
+  outline: 1px solid var(--blue); outline-offset: 1px;
+}
+.topnav-icon.panel-open { color: var(--blue); background: var(--card); }
+.topnav-avatar.panel-open { box-shadow: 0 0 0 2px var(--blue); }
+
+.topnav-popover {
+  position: fixed; top: 48px; z-index: 1500;
+  width: 360px; max-height: calc(100vh - 60px); overflow-y: auto;
+  background: var(--bg); border: 1px solid var(--border);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+  font-family: var(--sans); color: var(--text);
+}
+.topnav-popover-narrow { width: 280px; }
+.topnav-popover[hidden] { display: none; }
+
+.topnav-drawer {
+  position: fixed; top: 48px; right: 0; z-index: 1500;
+  width: 440px; height: calc(100vh - 48px); overflow-y: auto;
+  background: var(--bg); border-left: 1px solid var(--border);
+  box-shadow: -8px 0 24px rgba(0,0,0,0.6);
+  font-family: var(--sans); color: var(--text);
+}
+.topnav-drawer[hidden] { display: none; }
+
+.topnav-panel-header {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 12px 16px; background: #001828;
+  border-bottom: 1px solid var(--border);
+}
+.topnav-panel-title {
+  font-size: 11px; font-weight: 700; color: var(--blue);
+  letter-spacing: 1.5px; text-transform: uppercase;
+}
+.topnav-panel-sub { font-size: 10px; color: #5A7E92; }
+.topnav-panel-body { padding: 8px 0; }
+.topnav-panel-footer {
+  padding: 10px 16px; border-top: 1px solid var(--border);
+  font-size: 10px; color: #5A7E92; line-height: 1.5; background: #001020;
+}
+
+.topnav-panel-item {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 16px; border-bottom: 1px solid #001828;
+  transition: background 0.15s;
+}
+.topnav-panel-item:hover { background: #001828; }
+.topnav-panel-item:last-child { border-bottom: 0; }
+.topnav-panel-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  margin-top: 5px; flex-shrink: 0;
+}
+.topnav-panel-item-body { flex: 1; min-width: 0; }
+.topnav-panel-item-title {
+  font-size: 12px; font-weight: 600; color: var(--text);
+  margin-bottom: 3px;
+}
+.topnav-panel-item-detail {
+  font-size: 10px; color: #A8CDDE; line-height: 1.4;
+}
+.topnav-panel-item-ago {
+  font-size: 9px; color: #5A7E92; flex-shrink: 0;
+  font-family: var(--mono);
+}
+
+/* Canvas-guide drawer specifics */
+.guide-section { padding: 12px 16px; }
+.guide-label {
+  font-size: 10px; font-weight: 700; letter-spacing: 1.5px;
+  margin-bottom: 4px;
+}
+.guide-meta { font-size: 10px; color: #5A7E92; margin-bottom: 8px; }
+.guide-list {
+  list-style: none; padding: 0; margin: 0;
+  font-size: 11px; color: #A8CDDE; line-height: 1.7;
+}
+.guide-list li { padding-left: 12px; position: relative; }
+.guide-list li::before {
+  content: "·"; position: absolute; left: 0; color: var(--text-3);
+}
+.guide-list code {
+  color: var(--text); font-family: var(--mono); font-size: 10px;
+}
+.guide-flow {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  margin: 8px 0;
+}
+.guide-flow-step {
+  display: inline-block; padding: 4px 8px;
+  font-family: var(--mono); font-size: 9px; font-weight: 700;
+  letter-spacing: 0.5px; background: #001020;
+  border: 1px solid; border-radius: 2px;
+}
+.guide-flow-arrow { color: var(--text-3); font-size: 12px; }
+
+/* Settings panel specifics */
+.settings-section {
+  padding: 12px 16px; border-bottom: 1px solid #001828;
+}
+.settings-section:last-child { border-bottom: 0; }
+.settings-label {
+  font-size: 10px; font-weight: 700; letter-spacing: 1.5px;
+  color: var(--text-3); margin-bottom: 10px;
+}
+.settings-toggle {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 0; cursor: pointer;
+}
+.settings-toggle-input { cursor: pointer; }
+.settings-toggle-label { font-size: 11px; color: var(--text); }
+.settings-row {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 11px; padding: 4px 0; color: #A8CDDE;
+}
+.settings-row code {
+  color: var(--blue); font-family: var(--mono); font-size: 10px;
+}
+
+/* Avatar menu specifics */
+.avatar-section {
+  padding: 12px 16px; border-bottom: 1px solid #001828;
+}
+.avatar-section:last-child { border-bottom: 0; }
+.avatar-label {
+  font-size: 10px; font-weight: 700; letter-spacing: 1.5px;
+  color: var(--text-3); margin-bottom: 8px;
+}
+.avatar-link {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 0; font-size: 11px; color: var(--text);
+  text-decoration: none; transition: color 0.15s;
+}
+.avatar-link:hover { color: var(--blue); }
+.avatar-link-bullet {
+  width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+}
+.avatar-link-arrow {
+  margin-left: auto; color: var(--text-3); font-size: 10px;
+}
+.avatar-row {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 11px; padding: 3px 0; color: var(--text);
+}
+.avatar-row code {
+  color: var(--blue); font-family: var(--mono); font-size: 10px;
+}
+.avatar-row span {
+  color: #5A7E92; font-size: 10px;
+}
+
+/* Settings toggles drive page-state classes — targets V3 panels via the
+   data-panel-id markers added to render_value_scoring_panel /
+   render_risk_scoring_panel / render_placement_matrix. */
+body.hide-v3-scoring [data-panel-id="value-scoring"],
+body.hide-v3-scoring [data-panel-id="risk-scoring"] { display: none; }
+body.hide-pack-badges .pack-tier-badges { display: none !important; }
+body.hide-placement-matrix [data-panel-id="placement-matrix"] { display: none; }
+
 /* topbar — Box0 is the first column (168px), then Box1/2/3 (1fr each).
    align-items: stretch on the grid + height: auto on boxes = all 4 share
    the row's tallest box's height. Sticky at top:48px to clear the topnav. */
@@ -1712,6 +1879,80 @@ SEARCH_JS = """
 """
 
 
+PANEL_JS = """
+<script>
+/* HOL-10 phase 3 — utility-cluster panels.
+ * Wires buttons with data-panel to toggle the matching panel element.
+ * Search button (data-panel="search-overlay") is handled by SEARCH_JS;
+ * we skip it here so the two systems don't fight.
+ *
+ * Behaviour:
+ *  - click button → close other panels, toggle target
+ *  - click outside any panel/button → close all
+ *  - Esc → close all
+ *  - Settings toggles add/remove body classes (data-toggle-class)
+ *  - Popover right-anchors to its trigger button's right edge
+ */
+(function () {
+  const $buttons = document.querySelectorAll('[data-panel]');
+  const $panels  = document.querySelectorAll('.topnav-popover, .topnav-drawer');
+
+  function closeAll() {
+    $panels.forEach(p => p.setAttribute('hidden', ''));
+    $buttons.forEach(b => b.classList.remove('panel-open'));
+  }
+
+  function anchorPopover(panel, button) {
+    if (!panel.classList.contains('topnav-popover')) return; // drawer is right:0
+    const rect = button.getBoundingClientRect();
+    // Right-anchor the popover to the right edge of the viewport offset by
+    // (viewport-width minus button's right edge).
+    const rightEdge = window.innerWidth - rect.right;
+    panel.style.right = Math.max(8, rightEdge) + 'px';
+  }
+
+  $buttons.forEach(btn => {
+    const panelId = btn.getAttribute('data-panel');
+    if (panelId === 'search-overlay') return; // owned by SEARCH_JS
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const panel = document.getElementById(panelId);
+      if (!panel) return;
+      const isOpen = !panel.hasAttribute('hidden');
+      closeAll();
+      if (!isOpen) {
+        anchorPopover(panel, btn);
+        panel.removeAttribute('hidden');
+        btn.classList.add('panel-open');
+      }
+    });
+  });
+
+  // click outside → close
+  document.addEventListener('click', e => {
+    if (e.target.closest('[data-panel]')) return;
+    if (e.target.closest('.topnav-popover, .topnav-drawer')) return;
+    closeAll();
+  });
+
+  // Esc → close (SEARCH_JS already handles its own Esc; harmless redundancy)
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeAll();
+  });
+
+  // Settings toggles drive body classes (cosmetic show/hide).
+  document.querySelectorAll('[data-toggle-class]').forEach(cb => {
+    const cls = cb.getAttribute('data-toggle-class');
+    cb.addEventListener('change', () => {
+      document.body.classList.toggle(cls, cb.checked);
+    });
+  });
+})();
+</script>
+"""
+
+
+
 FILTER_JS = """
 <script>
 /* HOL-10 phase 1 — top-nav filtering.
@@ -1879,12 +2120,14 @@ FILTER_JS = """
 def render_topnav(packs: list[dict]) -> str:
     """Global top nav — CJI Pulse brand + canvas-header dropdowns + utility cluster.
 
-    HOL-10 phase 1: Product / Owner / Domain dropdowns are now functional —
-    they filter the briefing content via the JS in `render_filter_js()`. Date
-    is cosmetic (packs don't carry detection timestamps yet).
+    HOL-10 phase 1: Product / Owner / Domain dropdowns functional (filter JS).
+    HOL-10 phase 2: Search overlay wired ("/" keypress or click).
+    HOL-10 phase 3: Notifications dropdown · Canvas-guide drawer · Settings
+    panel · Avatar menu — all four panels behind interactive buttons with
+    data-panel attributes, opened/closed by PANEL_JS.
 
-    Search / Notifications / Canvas-guide / Settings still placeholders (subsequent
-    HOL-10 phases).
+    Date filter still cosmetic (packs don't carry detection timestamps —
+    blocked on PULSE-93).
     """
     domains = sorted({(p["hypothesis"] or {}).get("screen_id", "").split(".")[0]
                        for p in packs if (p["hypothesis"] or {}).get("screen_id")})
@@ -1911,6 +2154,13 @@ def render_topnav(packs: list[dict]) -> str:
     for d in domains:
         domain_opts += f'<option value="{d}">Domain · {d}</option>\n'
 
+    # Notification count — synthesized from observable engine state below in
+    # render_notif_panel(); we count unread events here so the badge stays in sync.
+    notif_count = len(_synthesise_notifications(packs))
+    notif_badge = (
+        f'<span class="topnav-icon-badge">{notif_count}</span>' if notif_count else ""
+    )
+
     return f'''
 <header class="app-topnav">
   <div class="topnav-brand">
@@ -1926,19 +2176,272 @@ def render_topnav(packs: list[dict]) -> str:
     <select class="topnav-select active" id="filter-domain" data-filter="domain">
       {domain_opts}
     </select>
-    <select class="topnav-select" disabled title="Date — packs don't yet carry detection timestamps">
+    <select class="topnav-select" disabled title="Date — packs don't yet carry detection timestamps (blocked on PULSE-93)">
       <option>Date · last 7 days</option>
     </select>
     <button class="topnav-reset" id="filter-reset" type="button" title="Reset filters (Esc)" hidden>Reset</button>
   </div>
   <div class="topnav-utility">
-    <span class="topnav-icon" title="Search packs (click or press /)">⌕</span>
-    <span class="topnav-icon" title="Notifications (HOL-10 phase 3)">🔔</span>
-    <span class="topnav-icon" title="Help / Canvas guide (HOL-10 phase 3)">?</span>
-    <span class="topnav-avatar" title="Hussain Ahmed">HA</span>
+    <button class="topnav-icon" id="btn-search" data-panel="search-overlay" type="button" title="Search packs (click or press /)">⌕</button>
+    <button class="topnav-icon" id="btn-notif" data-panel="panel-notif" type="button" title="Notifications · {notif_count} unread">🔔{notif_badge}</button>
+    <button class="topnav-icon" id="btn-guide" data-panel="panel-guide" type="button" title="Canvas guide — slot architecture + decision flow">?</button>
+    <button class="topnav-icon" id="btn-settings" data-panel="panel-settings" type="button" title="Settings — display preferences + methodology versions">⚙</button>
+    <button class="topnav-avatar" id="btn-avatar" data-panel="panel-avatar" type="button" title="Hussain Ahmed — project links + about">HA</button>
   </div>
 </header>
 '''
+
+
+def _synthesise_notifications(packs: list[dict]) -> list[dict]:
+    """Surface observable engine-state events as notifications.
+
+    For the dev preview these aren't pushed events — they're derived from
+    state the engine can observe at render time. Production would pull from
+    an event log; for now this teaches the user what kinds of events the
+    notifications surface will carry.
+    """
+    cell_score_sample = get_pack_cell(packs[0]["meta"]["pack_name"]) if packs else None
+    events: list[dict] = []
+
+    events.append({
+        "type": "system",
+        "color": "var(--green)",
+        "title": "Pulse v2 design spine shipped",
+        "detail": "10 tickets closed today (PULSE-99 through 106 + HOL-9 + HOL-11)",
+        "ago": "just now",
+    })
+    events.append({
+        "type": "curator",
+        "color": "var(--amber)",
+        "title": "Chronicle library awaiting curator review",
+        "detail": "10 CHR-friction entries pending_human_review — Risk matcher fails closed until verified",
+        "ago": "today",
+    })
+    if cell_score_sample is not None:
+        events.append({
+            "type": "engine",
+            "color": "var(--blue)",
+            "title": "Placement matrix online",
+            "detail": (
+                f"Diagnosis v{cell_score_sample.diagnosis.methodology_version} · "
+                f"Risk v{cell_score_sample.risk.methodology_version} · "
+                f"Value v{cell_score_sample.value.methodology_version}"
+            ),
+            "ago": "today",
+        })
+    events.append({
+        "type": "registry",
+        "color": "var(--teal)",
+        "title": f"{len(packs)} packs canvas-complete",
+        "detail": "PULSE-104 backfill — every pack declares actors / value_inputs / risk_inputs",
+        "ago": "today",
+    })
+
+    return events
+
+
+def render_notif_panel(packs: list[dict]) -> str:
+    """🔔 Notifications popover — engine-state events."""
+    events = _synthesise_notifications(packs)
+    items = ""
+    for e in events:
+        items += f'''
+<div class="topnav-panel-item">
+  <span class="topnav-panel-dot" style="background:{e["color"]};"></span>
+  <div class="topnav-panel-item-body">
+    <div class="topnav-panel-item-title">{e["title"]}</div>
+    <div class="topnav-panel-item-detail">{e["detail"]}</div>
+  </div>
+  <span class="topnav-panel-item-ago">{e["ago"]}</span>
+</div>'''
+    return f'''
+<div class="topnav-popover" id="panel-notif" data-anchor="btn-notif" hidden role="dialog" aria-label="Notifications">
+  <div class="topnav-panel-header">
+    <span class="topnav-panel-title">NOTIFICATIONS</span>
+    <span class="topnav-panel-sub">{len(events)} unread · engine-state events</span>
+  </div>
+  <div class="topnav-panel-body">{items}</div>
+  <div class="topnav-panel-footer">
+    Notifications surface engine-observable events. Production would
+    pull from an event log; this dev preview synthesises from current state.
+  </div>
+</div>'''
+
+
+def render_guide_drawer() -> str:
+    """? Canvas-guide right-side drawer — explains canvas slot architecture."""
+    return '''
+<aside class="topnav-drawer" id="panel-guide" data-anchor="btn-guide" hidden role="dialog" aria-label="Canvas guide">
+  <div class="topnav-panel-header">
+    <span class="topnav-panel-title">CANVAS — three slot classes</span>
+    <span class="topnav-panel-sub">Holter understands canvas; speaks in briefing form</span>
+  </div>
+  <div class="topnav-panel-body">
+
+    <div class="guide-section">
+      <div class="guide-label" style="color:var(--blue);">DECLARED</div>
+      <div class="guide-meta">Author writes · validator checks</div>
+      <ul class="guide-list">
+        <li><code>actors</code> — investigation_consumer / ml_engineer / mrm_reviewer / compliance_reviewer</li>
+        <li><code>value_inputs</code> — severity_class · vulnerable_cohort_sensitivity · population_segment_addressed</li>
+        <li><code>risk_inputs</code> — regulatory_taxonomies · policy_areas · chronicle_precedents</li>
+        <li><code>signature_id</code> · <code>screen_id</code> · <code>cell_id</code></li>
+        <li><code>analytic</code> · <code>cohort_axes</code> · <code>evidence_required</code> · <code>fairness</code></li>
+      </ul>
+    </div>
+
+    <div class="guide-section">
+      <div class="guide-label" style="color:var(--green);">COMPUTED</div>
+      <div class="guide-meta">Engine derives at runtime · reproducible</div>
+      <ul class="guide-list">
+        <li><code>Diagnosis</code> — SUPPORT_PROBLEM / JOURNEY_PROBLEM / BOTH / INCONCLUSIVE (PULSE-105)</li>
+        <li><code>Risk tier</code> — NOMINAL / WATCH / ESCALATE / REGULATORY-FLAG (PULSE-99)</li>
+        <li><code>Value tier</code> — NOMINAL / WATCH / SIGNIFICANT / COMMERCIAL-OPPORTUNITY (PULSE-101)</li>
+        <li><code>Action tier</code> — ACUTE / REGULATORY-FLAG / COMMERCIAL-OPPORTUNITY / WATCH / NOMINAL / NEEDS_MORE_DATA</li>
+        <li><code>methodology_version</code> + <code>inputs_hash</code> — pinned in every output for audit reproducibility</li>
+      </ul>
+    </div>
+
+    <div class="guide-section">
+      <div class="guide-label" style="color:var(--amber);">ATTACHED</div>
+      <div class="guide-meta">Organisational fact · lives outside pack</div>
+      <ul class="guide-list">
+        <li><code>bank_policy.escalation_thresholds</code> — affected_customers_7d_window · vulnerable_cohort_overrep_floor (PULSE-102)</li>
+        <li><code>bank_policy.policy_areas</code> — bank-internal policy register mapped to regulatory taxonomies</li>
+        <li><code>bank_policy.deployment_id</code> — opaque token, never the bank's name</li>
+        <li><code>chronicle_library</code> — curator-pending until <code>verification_status: verified</code></li>
+      </ul>
+    </div>
+
+    <div class="guide-section" style="border-top:1px solid var(--border);padding-top:14px;">
+      <div class="guide-label" style="color:var(--text-2);">DECISION FLOW</div>
+      <div class="guide-meta" style="margin-bottom:8px;">Order matters — Diagnosis can override the 2×2</div>
+      <div class="guide-flow">
+        <span class="guide-flow-step" style="border-color:var(--green);color:var(--green);">DIAGNOSIS</span>
+        <span class="guide-flow-arrow">→</span>
+        <span class="guide-flow-step" style="border-color:var(--red);color:var(--red);">RISK</span>
+        <span class="guide-flow-arrow">→</span>
+        <span class="guide-flow-step" style="border-color:var(--amber);color:var(--amber);">VALUE</span>
+        <span class="guide-flow-arrow">→</span>
+        <span class="guide-flow-step" style="border-color:var(--blue);color:var(--blue);">ACTION TIER</span>
+      </div>
+      <div class="guide-meta" style="margin-top:8px;">
+        JOURNEY_PROBLEM → "fix the journey" verb regardless of Action tier.
+        INCONCLUSIVE → NEEDS_MORE_DATA regardless of how appealing the cell looks.
+      </div>
+    </div>
+
+  </div>
+  <div class="topnav-panel-footer">
+    Methodology design docs:
+    <code>pulse/diagnosis/DIAGNOSIS_DESIGN.md</code> ·
+    <code>pulse/risk/RISK_DESIGN.md</code> ·
+    <code>pulse/value/VALUE_DESIGN.md</code>
+  </div>
+</aside>'''
+
+
+def render_settings_panel(packs: list[dict]) -> str:
+    """⚙ Settings popover — display preferences + methodology versions."""
+    # Pull real methodology versions from a sample pack's cell score
+    cell = get_pack_cell(packs[0]["meta"]["pack_name"]) if packs else None
+    if cell is not None:
+        d_ver = cell.diagnosis.methodology_version
+        r_ver = cell.risk.methodology_version
+        v_ver = cell.value.methodology_version
+    else:
+        d_ver = r_ver = v_ver = "unavailable"
+
+    now = _dt.datetime.now(_dt.UTC).strftime("%Y-%m-%d %H:%M UTC")
+
+    return f'''
+<div class="topnav-popover" id="panel-settings" data-anchor="btn-settings" hidden role="dialog" aria-label="Settings">
+  <div class="topnav-panel-header">
+    <span class="topnav-panel-title">SETTINGS</span>
+    <span class="topnav-panel-sub">Display preferences · build info</span>
+  </div>
+  <div class="topnav-panel-body">
+
+    <div class="settings-section">
+      <div class="settings-label">DISPLAY PREFERENCES</div>
+      <label class="settings-toggle">
+        <input type="checkbox" class="settings-toggle-input" data-toggle-class="hide-v3-scoring" id="toggle-scoring">
+        <span class="settings-toggle-label">Hide Value/Risk scoring panels (V3)</span>
+      </label>
+      <label class="settings-toggle">
+        <input type="checkbox" class="settings-toggle-input" data-toggle-class="hide-pack-badges" id="toggle-badges">
+        <span class="settings-toggle-label">Hide per-pack tier badges</span>
+      </label>
+      <label class="settings-toggle">
+        <input type="checkbox" class="settings-toggle-input" data-toggle-class="hide-placement-matrix" id="toggle-matrix">
+        <span class="settings-toggle-label">Hide placement matrix (V3)</span>
+      </label>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-label">METHODOLOGY VERSIONS</div>
+      <div class="settings-row"><span>Diagnosis</span><code>v{d_ver}</code></div>
+      <div class="settings-row"><span>Risk</span><code>v{r_ver}</code></div>
+      <div class="settings-row"><span>Value</span><code>v{v_ver}</code></div>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-label">BUILD INFO</div>
+      <div class="settings-row"><span>Packs registered</span><code>{len(packs)}</code></div>
+      <div class="settings-row"><span>Briefing rendered</span><code>{now}</code></div>
+      <div class="settings-row"><span>Engine version</span><code>pulse v1.0.0</code></div>
+    </div>
+
+  </div>
+  <div class="topnav-panel-footer">
+    Toggles persist for this session only — refresh clears.
+    Design doc: <code>CLAUDE.md</code> § HOL-1 identity lock.
+  </div>
+</div>'''
+
+
+def render_avatar_menu() -> str:
+    """HA Avatar menu — user info + project links + about."""
+    return '''
+<div class="topnav-popover topnav-popover-narrow" id="panel-avatar" data-anchor="btn-avatar" hidden role="menu" aria-label="User menu">
+  <div class="topnav-panel-header">
+    <span class="topnav-panel-title">HUSSAIN AHMED</span>
+    <span class="topnav-panel-sub">CJI · Holter / Pulse</span>
+  </div>
+  <div class="topnav-panel-body">
+
+    <div class="avatar-section">
+      <div class="avatar-label">PROJECT BOARDS</div>
+      <a class="avatar-link" href="https://cjipro.atlassian.net/jira/software/projects/PULSE" target="_blank" rel="noopener">
+        <span class="avatar-link-bullet" style="background:var(--blue);"></span>
+        <span>PULSE — engine (Scrum)</span>
+        <span class="avatar-link-arrow">↗</span>
+      </a>
+      <a class="avatar-link" href="https://cjipro.atlassian.net/jira/software/projects/HOL/boards/134" target="_blank" rel="noopener">
+        <span class="avatar-link-bullet" style="background:var(--amber);"></span>
+        <span>HOL — Holter (Kanban)</span>
+        <span class="avatar-link-arrow">↗</span>
+      </a>
+    </div>
+
+    <div class="avatar-section">
+      <div class="avatar-label">SISTER REPOS</div>
+      <div class="avatar-row"><code>cjipro/holter</code><span>this repo</span></div>
+      <div class="avatar-row"><code>cjipro/mil_streamlit</code><span>MIL · while-sleeping</span></div>
+      <div class="avatar-row"><code>cjipro/taq-app</code><span>TAQ synthetic env</span></div>
+    </div>
+
+    <div class="avatar-section">
+      <div class="avatar-label">ABOUT</div>
+      <div class="avatar-row" style="font-size:10px;color:#5A7E92;line-height:1.5;">
+        Holter = the bundle. Pulse = the engine. Briefing = the voice
+        (HOL-1 identity lock). Project-split rule: framework → PULSE,
+        surface → HOL.
+      </div>
+    </div>
+
+  </div>
+</div>'''
 
 
 def render_sidebar(packs: list[dict]) -> str:
@@ -2165,7 +2668,7 @@ def render_placement_matrix(packs: list[dict]) -> str:
 </tr>'''
 
     return f'''
-<div class="topbar-box">
+<div class="topbar-box" data-panel-id="placement-matrix">
   <div class="topbar-box-header">
     <span class="topbar-box-title">AGENTIC AI PLACEMENT MATRIX</span>
     <span style="font-size:10px;color:#3A6A7F;">
@@ -2281,7 +2784,7 @@ def render_value_scoring_panel(packs: list[dict]) -> str:
     )
 
     return f'''
-<div class="topbar-box">
+<div class="topbar-box" data-panel-id="value-scoring">
   <div class="topbar-box-header">
     <span class="topbar-box-title">VALUE SCORING</span>
     <span style="font-size:10px;color:#3A6A7F;">
@@ -2359,7 +2862,7 @@ def render_risk_scoring_panel(packs: list[dict]) -> str:
     )
 
     return f'''
-<div class="topbar-box">
+<div class="topbar-box" data-panel-id="risk-scoring">
   <div class="topbar-box-header">
     <span class="topbar-box-title">RISK SCORING</span>
     <span style="font-size:10px;color:#3A6A7F;">
@@ -2553,6 +3056,10 @@ def render_page(packs: list[dict]) -> str:
 </head>
 <body>
 {render_topnav(packs)}
+{render_notif_panel(packs)}
+{render_guide_drawer()}
+{render_settings_panel(packs)}
+{render_avatar_menu()}
 <div class="topbar">
   {render_sidebar(packs)}
   {box1_html}
@@ -2584,6 +3091,7 @@ def render_page(packs: list[dict]) -> str:
 {SEARCH_MODAL_HTML}
 {FILTER_JS}
 {SEARCH_JS}
+{PANEL_JS}
 </body>
 </html>
 '''
