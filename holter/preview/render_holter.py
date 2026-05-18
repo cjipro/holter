@@ -607,6 +607,40 @@ html, body { background: var(--bg); color: var(--text); font-family: var(--sans)
   line-height: 1.5;
 }
 
+/* PRIMARY action block — Box 1 dominant focal point (HOL-13).
+   Bigger / louder / tier-railed than .body-action. */
+.body-action-primary {
+  background: var(--card-elev);
+  border: 1px solid var(--border);
+  border-left: 6px solid var(--border);  /* overridden inline per tier */
+  padding: 14px 16px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.body-action-primary-label {
+  font-size: 9px; font-weight: 800; letter-spacing: 1.8px;
+  text-transform: uppercase;
+}
+.body-action-primary-text {
+  font-size: 13px; color: var(--text);
+  line-height: 1.5;
+}
+
+/* Decision-quality strip — Kozyrkov separation: keep quality signals
+   visually distinct from decision-INPUT signals (Diagnosis/Value/Risk). */
+.body-quality {
+  display: flex; align-items: center; gap: 12px;
+  padding: 6px 0;
+  border-top: 1px dashed var(--border);
+  font-size: 10px; color: var(--text-3);
+}
+.body-quality-label {
+  font-weight: 800; letter-spacing: 1.4px;
+  color: var(--text-3); text-transform: uppercase;
+  flex-shrink: 0;
+}
+.body-quality-items { display: flex; gap: 14px; color: var(--text-2);
+                      font-family: var(--mono); }
+
 /* Sparkline container — sits inside body, full-width SVG */
 .body-sparkline { display: block; }
 
@@ -869,6 +903,38 @@ def body_action_line(text: str, color: str) -> str:
     return (
         f'<div class="body-action" style="border-left-color:{color};">'
         f'<span>{text}</span>'
+        f'</div>'
+    )
+
+
+def body_action_primary(label: str, text: str, color: str) -> str:
+    """PRIMARY action block — the dominant focal point of the box body.
+
+    Used in Box 1 (VERDICT) where ACTION must outweigh supporting metadata
+    (Diagnosis/Value/Risk chips and decision-quality strip). Larger padding,
+    bigger type, thicker tier-coloured rail than body_action_line.
+    """
+    return (
+        f'<div class="body-action-primary" '
+        f'style="border-left-color:{color};">'
+        f'<div class="body-action-primary-label" style="color:{color};">{label}</div>'
+        f'<div class="body-action-primary-text">{text}</div>'
+        f'</div>'
+    )
+
+
+def body_quality_strip(items: list[str], label: str = "DECISION QUALITY") -> str:
+    """Small decision-quality strip — confidence, ceiling, fairness, lineage.
+
+    Kozyrkov separation: decision-INPUT signals (Diagnosis/Value/Risk) and
+    decision-QUALITY signals (Confidence/Ceiling/Fairness) must not mix.
+    This strip is the visual container for the quality side.
+    """
+    items_html = "".join(f'<span>{i}</span>' for i in items)
+    return (
+        f'<div class="body-quality">'
+        f'<span class="body-quality-label">{label}</span>'
+        f'<span class="body-quality-items">{items_html}</span>'
         f'</div>'
     )
 
@@ -1173,15 +1239,12 @@ def render_box1(packs: list[dict]) -> str:
         diagnosis_label = cell_score.diagnosis.diagnosis
         value_label     = cell_score.value.tier
         risk_label      = cell_score.risk.tier
-        kpi_tiles = [
-            (diagnosis_label, "DIAGNOSIS",
-             f"gap {cell_score.diagnosis.gap:+.2f} · support vs journey",
+        supporting_chips = [
+            ("DIAGNOSIS", diagnosis_label,
              _DIAGNOSIS_COLORS.get(diagnosis_label, "var(--amber)")),
-            (value_label,     "VALUE",
-             f"tier {cell_score.value.numeric_tier}/4 · {len(cell_score.value.adjustments_applied)} adj",
+            ("VALUE",     value_label,
              _VALUE_COLORS.get(value_label, "var(--amber)")),
-            (risk_label,      "RISK",
-             f"tier {cell_score.risk.numeric_tier}/4 · {len(cell_score.risk.regulatory_matches)} reg-match",
+            ("RISK",      risk_label,
              _RISK_COLORS.get(risk_label, "var(--amber)")),
         ]
     else:
@@ -1189,20 +1252,21 @@ def render_box1(packs: list[dict]) -> str:
         tier_color = "var(--text-3)"
         recommendation = "Verdict computation requires engine scenario (PULSE-106)"
         breadcrumb = (pack["hypothesis"] or {}).get("screen_id", "—")
-        kpi_tiles = [
-            ("—", "DIAGNOSIS", "support · journey · both",          "var(--text-3)"),
-            ("—", "VALUE",     "friction × pop × baseline",         "var(--text-3)"),
-            ("—", "RISK",      "taxonomy × policy × chronicle",     "var(--text-3)"),
+        supporting_chips = [
+            ("DIAGNOSIS", "—", "var(--text-3)"),
+            ("VALUE",     "—", "var(--text-3)"),
+            ("RISK",      "—", "var(--text-3)"),
         ]
 
     # Key Area = strategic alignment of the work (engine-derived later;
     # stubbed here for design). Header carries this; headline carries the
-    # selection breadcrumb + recommendation.
+    # tier verdict + selection breadcrumb (recommendation moves to body).
     key_area = "CUSTOMER EXPERIENCE"
 
+    # HOL-13 hierarchy: badge + breadcrumb in headline (the VERDICT label);
+    # recommendation moves to body_action_primary (the dominant focal point).
     headline_context = (
-        f'<strong style="color:var(--text);">{breadcrumb}</strong><br>'
-        f'<span style="color:var(--text-2);">{recommendation}</span>'
+        f'<strong style="color:var(--text);">{breadcrumb}</strong>'
     )
 
     return render_box(
@@ -1213,14 +1277,16 @@ def render_box1(packs: list[dict]) -> str:
             color=tier_color,
             context=headline_context,
         ),
-        body=body_kpi_tiles(kpi_tiles) + body_action_line(
-            f'<strong>ACTION:</strong> {recommendation}', tier_color
-        ) + body_lines([
-            ("<strong>Confidence:</strong> 0.82 · Designed ceiling 0.85 · fairness attested",
-             "var(--blue)"),
-            ("Selection drives this box · top nav → DuckDB churn (PULSE) → verdict object",
-             "var(--text-3)"),
-        ]),
+        body=(
+            body_action_primary("ACTION", recommendation, tier_color)
+            + body_chip_strip(supporting_chips)
+            + body_quality_strip([
+                "Confidence 0.82",
+                "Designed ceiling 0.85",
+                "Fairness attested",
+                "Lineage anchored",
+            ])
+        ),
         footer=box_footer(
             f"pack: {meta['pack_name']}", NOW, live=True,
             note=f"sha256:{short_hash(pack['sha256'])} · verdict v0 · DuckDB-backed (PULSE)",
