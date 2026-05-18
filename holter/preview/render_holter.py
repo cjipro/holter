@@ -245,6 +245,31 @@ def tooltip_token(dimension: str, token: str) -> str:
     return f'<span data-tooltip="{safe}">{token}</span>'
 
 
+def render_glossary_panel() -> str:
+    """HOL-16 Part B — persistent glossary affordance.
+
+    Renders the full STATUS_GLOSSARY as a grouped, scrollable panel that
+    drops down from the top-nav glossary icon. Tokens listed per dimension
+    so the reader sees how (e.g.) NOMINAL differs across Action / Value / Risk.
+    """
+    sections = []
+    for dim, entries in STATUS_GLOSSARY.items():
+        items = "".join(
+            f'<div class="glossary-item">'
+            f'<span class="glossary-token">{tok}</span>'
+            f'<span class="glossary-def">{defn}</span>'
+            f'</div>'
+            for tok, defn in entries.items()
+        )
+        sections.append(
+            f'<div class="glossary-section">'
+            f'<div class="glossary-section-label">{dim.upper()}</div>'
+            f'{items}'
+            f'</div>'
+        )
+    return "".join(sections)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # CSS — locked design language
 # ─────────────────────────────────────────────────────────────────────────────
@@ -478,7 +503,8 @@ html, body { background: var(--bg); color: var(--text); font-family: var(--sans)
   border-left: 3px solid var(--border);     /* default; per-box accent overrides */
   display: grid;
   grid-template-rows: 48px 96px 1fr 48px;   /* header + headline + body(1fr) + footer */
-  overflow: hidden;
+  overflow: visible;                        /* HOL-16: tooltips escape box edge.
+                                              Each layer clips its OWN content. */
   transition: border-left-color 0.2s;
 }
 .box-header {
@@ -511,7 +537,7 @@ html, body { background: var(--bg); color: var(--text); font-family: var(--sans)
 }
 .box-body {
   padding: 14px;
-  overflow: hidden;
+  overflow: visible;                        /* HOL-16: hover tooltips on chips escape body */
   display: flex; flex-direction: column; gap: 10px;
 }
 .box-footer {
@@ -759,15 +785,91 @@ details[open] > .body-disclosure-summary::after { content: " ▴"; }
 [data-tooltip]:hover::after {
   content: attr(data-tooltip);
   position: absolute;
-  bottom: 100%; left: 0;
+  bottom: 100%;
+  left: 50%;                              /* HOL-16: center-anchor */
+  transform: translateX(-50%);
   margin-bottom: 6px;
   background: var(--card-2); color: var(--text);
   border: 1px solid var(--blue);
   padding: 8px 10px; border-radius: 2px;
   font-size: 11px; line-height: 1.5;
-  white-space: normal; max-width: 480px;
+  white-space: normal;
+  width: max-content;
+  max-width: 320px;                       /* HOL-16: was 480px — fits adjacent boxes */
   z-index: 200;
   box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+  pointer-events: none;                   /* avoid hover-leave jitter */
+}
+/* HOL-16: opt-in to "tooltip below" for triggers with limited space above
+   (e.g., severity filter labels right under the topnav). Apply via
+   class="tooltip-below". */
+[data-tooltip].tooltip-below:hover::after {
+  bottom: auto;
+  top: 100%;
+  margin-bottom: 0;
+  margin-top: 6px;
+}
+
+/* HOL-16 Part B — Persistent glossary affordance.
+   Top-nav <details> drops down a scrollable panel listing every defined
+   token in STATUS_GLOSSARY, grouped by dimension. */
+.topnav-glossary { position: relative; }
+.topnav-glossary > summary.topnav-glossary-trigger {
+  list-style: none;
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 13px; font-weight: 700;
+}
+.topnav-glossary > summary::-webkit-details-marker { display: none; }
+.topnav-glossary-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  background: var(--card-2);
+  border: 1px solid var(--blue);
+  width: 520px;
+  max-height: 72vh;
+  overflow-y: auto;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.7);
+  z-index: 220;
+  padding: 14px 16px;
+}
+.topnav-glossary-panel-header {
+  font-size: 10px; font-weight: 800;
+  letter-spacing: 1.8px;
+  color: var(--blue);
+  text-transform: uppercase;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 10px;
+}
+.glossary-section { margin-bottom: 14px; }
+.glossary-section:last-child { margin-bottom: 0; }
+.glossary-section-label {
+  font-size: 9px; font-weight: 800;
+  letter-spacing: 1.4px;
+  color: var(--text-3);
+  text-transform: uppercase;
+  padding-bottom: 4px;
+  margin-bottom: 6px;
+  border-bottom: 1px dashed var(--border);
+}
+.glossary-item {
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  gap: 12px;
+  padding: 4px 0;
+  font-size: 10px;
+}
+.glossary-token {
+  font-family: var(--mono);
+  font-weight: 700;
+  color: var(--text);
+  word-break: break-word;
+}
+.glossary-def {
+  color: var(--text-2);
+  line-height: 1.45;
 }
 
 /* Filtered-out box visibility */
@@ -1143,6 +1245,13 @@ def render_topnav(packs: list[dict]) -> str:
   <span class="topnav-spacer"></span>
   <button class="topnav-icon" type="button" title="Search packs (/)">⌕</button>
   <button class="topnav-icon" type="button" title="Notifications">🔔</button>
+  <details class="topnav-glossary">
+    <summary class="topnav-icon topnav-glossary-trigger" title="Status glossary (full token dictionary)">Aa</summary>
+    <div class="topnav-glossary-panel">
+      <div class="topnav-glossary-panel-header">STATUS GLOSSARY</div>
+      <div class="topnav-glossary-panel-body">{render_glossary_panel()}</div>
+    </div>
+  </details>
   <button class="topnav-icon" type="button" title="Canvas guide">?</button>
   <button class="topnav-icon" type="button" title="Settings">⚙</button>
   <button class="topnav-avatar" type="button" title="Hussain Ahmed">HA</button>
