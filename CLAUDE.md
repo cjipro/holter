@@ -174,6 +174,24 @@ The Workspace surface (HOL-3) uses the MIL Sonar V4 briefing template, **not** t
 
 `holter/preview/templates_preview.py` (Bloomberg-terminal Streamlit) is **deprecated** — file in repo as design-iteration reference, not served on any port.
 
+### HOL-3 Workspace template — locked box discipline + responsive clamp (SHIPPED 2026-05-18 → 19)
+
+`holter/preview/render_holter.py` ports the :8502 MIL briefing into the Workspace surface (HOL-3) using a uniform 4-layer box contract — the same engine data (`discover_packs()` + PULSE-106 placement scenario) rendered through one disciplined box grid.
+
+**Box discipline (universal, every box):**
+- Layers: header 48px / headline 96px / body `1fr` / footer 48px
+- Width: fluid 100% inside a responsive 3-col grid (2-col ≤1100px, 1-col ≤700px)
+- Height: `clamp(520px, 78vh, 731px)` — body absorbs variance; chrome stays fixed
+- Verified across 600 / 750 / 900 / 1080px viewport heights — ceiling caps at 731, floor holds at 520
+
+**Where to find it:**
+- Renderer: `holter/preview/render_holter.py`
+- Output: `dist/preview/holter/index.html` (gitignored)
+- Served at: **http://localhost:8504/** via `holter/preview/serve_holter.py`
+- Start: `py holter/preview/serve_holter.py`
+
+**Initial port commit:** `581c203` — 1842 LOC, both files added.
+
 ### Ticket spine — Value + Risk + Diagnosis methodology architecture (SHIPPED 2026-05-18)
 
 Full v2 design spine shipped end-to-end in one day. Filed dependency-ordered (no phases), built and closed in the order the graph allowed.
