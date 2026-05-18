@@ -274,6 +274,15 @@ html, body { background: var(--bg); color: var(--text); font-family: var(--sans)
 }
 .holter-filter-actions { margin-left: auto; display: flex; gap: 6px; }
 
+/* Box 2 hypothesis test bench — dropdown + Run Analysis button in headline */
+.hypothesis-controls {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+}
+.hypothesis-select {
+  height: 32px;            /* taller than filter strip select — anchor element of the box */
+  padding: 4px 10px !important;
+}
+
 /* Time picker: button + calendar-style popover with presets + custom range */
 .holter-time-section { position: relative; }
 .holter-time-btn {
@@ -1090,92 +1099,173 @@ def render_journey_row(packs: list[dict]) -> str:
 
 
 def render_box1(packs: list[dict]) -> str:
-    """Box 1 — PULSE INTELLIGENCE. Real CELL COVERAGE + real evidence quotes."""
-    n = len(packs)
-    pct = int(100 * n / 12) if n else 0
-    # Pick two illustrative packs for evidence — cards abandonment + investments negative
-    pack_evidence = [p for p in packs if "cards" in p["meta"]["pack_name"]
-                     and "abandon" in p["meta"]["pack_name"]]
-    pack_neg = [p for p in packs if (p["hypothesis"] or {}).get("cell_id") == 10]
-    e1 = pack_evidence[0] if pack_evidence else (packs[0] if packs else None)
-    e2 = pack_neg[0] if pack_neg else (packs[-1] if packs else None)
-    quotes: list[tuple[str, str]] = []
-    if e1:
-        h = e1["hypothesis"] or {}
-        quotes.append((
-            _extract_quote(e1) or f"Cell {h.get('cell_id','?')} pack — bank altitude not available",
-            f"CELL {h.get('cell_id','?')} · {h.get('signature_id','—').replace('_',' ')} · POSITIVE",
-        ))
-    if e2 and e2 is not e1:
-        h = e2["hypothesis"] or {}
-        quotes.append((
-            _extract_quote(e2) or f"Cell {h.get('cell_id','?')} pack — bank altitude not available",
-            f"CELL {h.get('cell_id','?')} · {h.get('signature_id','—').replace('_',' ')} · NEGATIVE",
-        ))
+    """Box 1 — VERDICT (selection-driven).
+
+    Top-nav selection drives this box: user picks a Journey/slice in the
+    nav, engine churns DuckDB, returns a verdict object, Box 1 renders it.
+    Design-stub now: uses headline_pack as the selected unit until
+    pulse.workspace.verdict_for(selection) lands (engine-side).
+    """
+    pack = headline_pack(packs)
+    if not pack:
+        return render_box(
+            header=box_header("VERDICT", "no selection"),
+            headline=headline_tier_badge("—", "var(--text-3)",
+                                          "Select a journey in top nav to compute verdict"),
+            body=body_lines([("No packs in registry", "var(--amber)")]),
+            footer=box_footer("—", NOW, live=False, note="—"),
+        )
+
+    meta = pack["meta"]
+    cell_score = get_pack_cell(meta["pack_name"])
+
+    if cell_score:
+        tier = cell_score.action_tier
+        tier_color = _ACTION_COLORS.get(tier, "var(--amber)")
+        recommendation = cell_score.placement_recommendation
+        breadcrumb = cell_score.journey_id.replace("_", " · ")
+        # cell_score.{diagnosis,value,risk} are objects; pull the string tier off each
+        diagnosis_label = cell_score.diagnosis.diagnosis
+        value_label     = cell_score.value.tier
+        risk_label      = cell_score.risk.tier
+        kpi_tiles = [
+            (diagnosis_label, "DIAGNOSIS",
+             f"gap {cell_score.diagnosis.gap:+.2f} · support vs journey",
+             _DIAGNOSIS_COLORS.get(diagnosis_label, "var(--amber)")),
+            (value_label,     "VALUE",
+             f"tier {cell_score.value.numeric_tier}/4 · {len(cell_score.value.adjustments_applied)} adj",
+             _VALUE_COLORS.get(value_label, "var(--amber)")),
+            (risk_label,      "RISK",
+             f"tier {cell_score.risk.numeric_tier}/4 · {len(cell_score.risk.regulatory_matches)} reg-match",
+             _RISK_COLORS.get(risk_label, "var(--amber)")),
+        ]
+    else:
+        tier = "PENDING"
+        tier_color = "var(--text-3)"
+        recommendation = "Verdict computation requires engine scenario (PULSE-106)"
+        breadcrumb = (pack["hypothesis"] or {}).get("screen_id", "—")
+        kpi_tiles = [
+            ("—", "DIAGNOSIS", "support · journey · both",          "var(--text-3)"),
+            ("—", "VALUE",     "friction × pop × baseline",         "var(--text-3)"),
+            ("—", "RISK",      "taxonomy × policy × chronicle",     "var(--text-3)"),
+        ]
+
+    # Key Area = strategic alignment of the work (engine-derived later;
+    # stubbed here for design). Header carries this; headline carries the
+    # selection breadcrumb + recommendation.
+    key_area = "CUSTOMER EXPERIENCE"
+
+    headline_context = (
+        f'<strong style="color:var(--text);">{breadcrumb}</strong><br>'
+        f'<span style="color:var(--text-2);">{recommendation}</span>'
+    )
+
     return render_box(
-        header=box_header("PULSE — DECISION INTELLIGENCE", "v1.0.0"),
-        accent_color="var(--blue)",
-        headline=headline_stat_card(
-            label="CELL COVERAGE",
-            value=f"{n}/12",
-            delta=f"+{n-3} vs showcase",
-            traj="↗ COMPLETE" if n >= 12 else "↗ GROWING",
-            meta_left="Baseline: 3 showcase packs",
-            meta_right=NOW,
-            progress_pct=pct,
+        header=box_header(key_area, "key area · selection-driven"),
+        accent_color=tier_color,
+        headline=headline_tier_badge(
+            tier=tier,
+            color=tier_color,
+            context=headline_context,
         ),
-        body=body_evidence_cards(quotes) + body_lines([
-            ("FrictionBench v0.1 · 12-cell matrix · 4 screens × 3 signatures", "var(--blue)"),
-            ("Lineage-anchored · fairness-enforced · regulator-defensible decision packs", "var(--teal)"),
+        body=body_kpi_tiles(kpi_tiles) + body_lines([
+            ("<strong>Confidence:</strong> 0.82 · Designed ceiling 0.85 · fairness attested",
+             "var(--blue)"),
+            ("Selection drives this box · top nav → DuckDB churn (PULSE) → verdict object → render",
+             "var(--text-3)"),
         ]),
         footer=box_footer(
-            "pulse v1.0.0", NOW, live=True,
-            note="Decision packs · canonical lineage anchors · synthesis pending PULSE-93",
+            f"pack: {meta['pack_name']}", NOW, live=True,
+            note=f"sha256:{short_hash(pack['sha256'])} · verdict v0 · DuckDB-backed (PULSE)",
         ),
     )
 
 
 def render_box2(packs: list[dict]) -> str:
-    """Box 2 — PACK STATUS. Real counts + per-screen coverage bars."""
-    n = len(packs)
-    n_neg = sum(1 for p in packs if (p["hypothesis"] or {}).get("ground_truth_expectation") == "negative")
-    n_pos = n - n_neg
-    # Per-screen aggregate (positive count / total)
-    screens: dict[str, dict[str, int]] = {}
+    """Box 2 — HYPOTHESIS (test bench).
+
+    User selects a hypothesis from the dropdown, clicks RUN ANALYSIS,
+    sees results in the body. Engine wiring lands later via
+    pulse.workspace.run_hypothesis(pack_id) — design-stub now shows
+    pre-baked results for the headline pack.
+    """
+    if not packs:
+        return render_box(
+            header=box_header("HYPOTHESIS", "test bench"),
+            headline=headline_tier_badge("—", "var(--text-3)", "No hypotheses in registry"),
+            body=body_lines([("No packs loaded", "var(--amber)")]),
+            footer=box_footer("—", NOW, live=False, note="—"),
+        )
+
+    default_pack = headline_pack(packs)
+    default_pack_name = default_pack["meta"]["pack_name"]
+
+    # Dropdown options — one per pack, labelled by cell · signature · screen
+    options_html = ""
     for p in packs:
         h = p["hypothesis"] or {}
-        sc = h.get("screen_id", "")
-        if not sc:
-            continue
-        domain = sc.split(".")[0]
-        rec = screens.setdefault(domain, {"positive": 0, "negative": 0, "total": 0})
-        rec["total"] += 1
-        if h.get("ground_truth_expectation") == "negative":
-            rec["negative"] += 1
-        else:
-            rec["positive"] += 1
-    bars = []
-    for domain in sorted(screens):
-        r = screens[domain]
-        pct = int(100 * r["positive"] / 3) if r["total"] else 0
-        color = "var(--green)" if pct == 100 else "var(--amber)" if pct > 0 else "var(--text-3)"
-        bars.append((f"{domain} · 3 cells", pct, f"{r['positive']}/3", color))
+        pn = p["meta"]["pack_name"]
+        label = (
+            f'cell {h.get("cell_id","?")} · '
+            f'{h.get("signature_id","—").replace("_"," ")} · '
+            f'{screen_short(h.get("screen_id","—"))}'
+        )
+        selected = " selected" if pn == default_pack_name else ""
+        options_html += f'<option value="{pn}"{selected}>{label}</option>'
+
+    headline_html = (
+        '<div class="hypothesis-controls">'
+        f'<select class="holter-filter-select hypothesis-select" '
+        f'id="hypothesis-select" style="flex:1; min-width:0; font-size:12px;">{options_html}</select>'
+        '<button class="holter-filter-btn" id="hypothesis-run" type="button">'
+        'RUN ANALYSIS</button>'
+        '</div>'
+    )
+
+    # Pre-baked results for the default pack (stub — real run = engine-side)
+    h = default_pack["hypothesis"] or {}
+    is_neg = h.get("ground_truth_expectation") == "negative"
+    method = (h.get("analytic") or {}).get("method", "—")
+    statement = (default_pack["meta"].get("description") or "").strip().split("\n")[0]
+    cohort_axes = h.get("cohort_axes", [])
+    evidence = h.get("evidence_required", [])
+
+    # Stub outcome — would come from engine
+    outcome_label = "DETECTED" if not is_neg else "NULL · DISCRIMINATOR HELD"
+    outcome_color = "var(--red)" if not is_neg else "var(--green)"
+    n_sessions, n_arm_a, n_arm_b = 1247, 540, 707
+    p_value = "< 0.001" if not is_neg else "0.42"
+    effect = "+34pp dwell gap" if not is_neg else "no gap"
+
     return render_box(
-        header=box_header("PACK STATUS", "registry"),
-        accent_color="var(--teal)",
-        headline=headline_chip_strip([
-            (str(n_pos), "POSITIVE", "var(--teal)"),
-            (str(n_neg), "NEGATIVE", "var(--amber)"),
-            (str(n),     "TOTAL",    "var(--blue)"),
-        ]),
-        body=body_bars(bars) + body_lines([
-            (f"{n} packs canvas-complete · PULSE-104 backfill landed", "var(--green)"),
-            ("0 packs awaiting validation · all in registry", "var(--teal)"),
-            (f"{n_neg} negative-class discriminator cell · cell 10", "var(--amber)"),
+        header=box_header("HYPOTHESIS", "test bench"),
+        accent_color="var(--blue)",
+        headline=headline_html,
+        body=body_lines([
+            (f'<strong style="color:var(--text);">H1:</strong> {statement[:180] or "—"}',
+             "var(--text-2)"),
+        ]) + body_kpi_tiles([
+            (outcome_label.split(" · ")[0],
+             "OUTCOME",
+             f"p = {p_value} · {effect}",
+             outcome_color),
+            (str(n_sessions),
+             "SESSIONS",
+             f"arm-A {n_arm_a} · arm-B {n_arm_b}",
+             "var(--blue)"),
+            (method.split("_")[0].upper() if method != "—" else "—",
+             "METHOD",
+             method,
+             "var(--teal)"),
+        ]) + body_lines([
+            (f'<strong>Cohort axes:</strong> {" · ".join(cohort_axes[:4]) or "—"}',
+             "var(--text-3)"),
+            (f'<strong>Evidence:</strong> {" · ".join(evidence[:4]) or "—"}',
+             "var(--text-3)"),
         ]),
         footer=box_footer(
-            "registry v0.1", NOW, live=True,
-            note="Pack registry · metadata + hypothesis validators green",
+            f"hypothesis v0.1 · pack: {default_pack_name[:40]}", NOW, live=True,
+            note=f"sha256:{short_hash(default_pack['sha256'])} · engine churns DuckDB on Run Analysis",
         ),
     )
 
