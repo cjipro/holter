@@ -174,15 +174,23 @@ The Workspace surface (HOL-3) uses the MIL Sonar V4 briefing template, **not** t
 
 `holter/preview/templates_preview.py` (Bloomberg-terminal Streamlit) is **deprecated** — file in repo as design-iteration reference, not served on any port.
 
-### HOL-3 Workspace template — locked box discipline + responsive clamp (SHIPPED 2026-05-18 → 19)
+### HOL-3 Workspace surface — DESIGN-LOCKED 2026-05-19
 
-`holter/preview/render_holter.py` ports the :8502 MIL briefing into the Workspace surface (HOL-3) using a uniform 4-layer box contract — the same engine data (`discover_packs()` + PULSE-106 placement scenario) rendered through one disciplined box grid.
+The Workspace (`holter/preview/render_holter.py`, served at `:8504`) is the deep-build surface — it's now design-locked after a 3-round multi-model panel review process. Further iteration belongs in *content* (engine returns richer verdict objects), not *layout*.
 
 **Box discipline (universal, every box):**
 - Layers: header 48px / headline 96px / body `1fr` / footer 48px
 - Width: fluid 100% inside a responsive 3-col grid (2-col ≤1100px, 1-col ≤700px)
 - Height: `clamp(520px, 78vh, 731px)` — body absorbs variance; chrome stays fixed
-- Verified across 600 / 750 / 900 / 1080px viewport heights — ceiling caps at 731, floor holds at 520
+- `.holter-box` overflow: visible (so tooltips escape); each layer clips its own content via overflow: hidden on `.box-header` / `.box-headline` / `.box-footer`
+- Verified across 600 / 750 / 900 / 1080px viewport heights
+
+**Investigation triad (topbar, locked):**
+- **Box 1 VERDICT** — selection-driven; header carries Key Area (e.g., `CUSTOMER EXPERIENCE`); headline shows CLARK tier badge + breadcrumb; body is `body_action_primary` (ACTION dominant) + supporting Diagnosis/Value/Risk chip strip + Kozyrkov-separated DECISION QUALITY strip + "What this means" synthesis line
+- **Box 2 HYPOTHESIS** — interactive test bench; headline dropdown (per-pack) + `RUN ANALYSIS` button; body shows H1 + OUTCOME/SESSIONS/METHOD tiles + "What this means" synthesis + cohort + evidence
+- **Box 3 EVIDENCE** — taste of data; headline `headline_stat_card` (today's KPI + delta vs 7d + trajectory); body sparkline with Designed Ceiling reference line + single primary supporting KPI + `<details>` "DETAIL ▾" progressive disclosure + "What this tells us" synthesis
+
+**Universal hover-glossary:** `STATUS_GLOSSARY` (scoped by dimension: action/diagnosis/value/risk/severity) wraps every tier token via `tooltip_token()`. Persistent fallback: top-nav `Aa` icon opens a native `<details>` panel listing every entry grouped by dimension. No JS required.
 
 **Where to find it:**
 - Renderer: `holter/preview/render_holter.py`
@@ -190,7 +198,59 @@ The Workspace surface (HOL-3) uses the MIL Sonar V4 briefing template, **not** t
 - Served at: **http://localhost:8504/** via `holter/preview/serve_holter.py`
 - Start: `py holter/preview/serve_holter.py`
 
-**Initial port commit:** `581c203` — 1842 LOC, both files added.
+#### Panel review process (lock justification)
+
+Three panels × three model classes (Opus / Sonnet / Haiku) × three named experts per panel (Data Product / Decision Intelligence / UX) = **9 voices**. Three rounds across 2026-05-19. Each round generated a "what's left" list which then drove the next round's tickets.
+
+| Round | Opus mean | Sonnet mean | Haiku mean | All-9 mean |
+|---|---|---|---|---|
+| R1 (baseline) | 6.5 | 6.7 | 7.0 | 6.72 |
+| R2 (after HOL-12/13/14) | 8.0 | 8.0 | 6.83 | 7.55 |
+| R3 (after HOL-15/16/17) | 8.33 | 8.33 | 7.00 | 7.89 |
+
+Net uplift R1 → R3: **+1.17**. Opus + Sonnet converged at 8.33; Haiku held lower because its lens is regulated-product governance, which is a feature dimension not a layout one. Diminishing returns hit at R3.
+
+**Holter scorecard (5 weighted dimensions, regulated-banking weights):**
+
+| # | Dimension | Score | Weight | Weighted |
+|---|---|---|---|---|
+| 1 | Verifiable transparency | 7.5 | 30% | 2.25 |
+| 2 | Cognitive load management | 8.0 | 15% | 1.20 |
+| 3 | Decision-action coupling | 6.5 | 25% | 1.625 |
+| 4 | Fairness + bias surfacing | 8.5 | 15% | 1.275 |
+| 5 | Regulator survival (Section 166) | 7.0 | 15% | 1.05 |
+| | **Composite** | **7.40** | | |
+
+#### Ticket spine — panel-review remediation (SHIPPED 2026-05-19)
+
+| Key | Round | Voice that flagged it | Commit |
+|---|---|---|---|
+| [HOL-12](https://cjipro.atlassian.net/browse/HOL-12) | R1→R2 | Mason/Tufte/Patil/Few/Colson (5 of 9) — "What this means" synthesis lines | `6721529` |
+| [HOL-13](https://cjipro.atlassian.net/browse/HOL-13) | R1→R2 | Patil/Kozyrkov/Pratt (3 of 9) — Box 1 ACTION primary hierarchy | `624cc0f` |
+| [HOL-14](https://cjipro.atlassian.net/browse/HOL-14) | R1→R2 | Nielsen/Duke/Mason (3 of 9) — hover-glossary on every tier token | `197225e` |
+| [HOL-15](https://cjipro.atlassian.net/browse/HOL-15) | R2→R3 | Few — Box 3 single-KPI + progressive disclosure | `2360423` |
+| [HOL-16](https://cjipro.atlassian.net/browse/HOL-16) | R2→R3 | Nielsen — tooltip overflow fix + persistent glossary in top nav | `0ad263f` |
+| [HOL-17](https://cjipro.atlassian.net/browse/HOL-17) | R2→R3 | Tufte — Designed Ceiling reference line on sparkline | `076ca21` |
+| [HOL-3 port](https://cjipro.atlassian.net/browse/HOL-3) | (foundation) | initial Workspace port from :8502 | `581c203` |
+
+#### Residual backlog (filed 2026-05-19 — NOT lock-blockers)
+
+Six tickets capture the panel-flagged items that did NOT ship before lock. Treated as backlog because they're either feature work (Duke, Kozyrkov), engine-contract work (Patil, Colson), or low-impact cosmetic (Mason, Pratt). The Workspace surface is design-locked despite these being open:
+
+| Key | Voice | Dimension | Lock-blocker? |
+|---|---|---|---|
+| [HOL-18](https://cjipro.atlassian.net/browse/HOL-18) | Patil | Decision-action coupling | No — engine-contract work (action verb taxonomy) |
+| [HOL-19](https://cjipro.atlassian.net/browse/HOL-19) | Kozyrkov | Verifiable transparency | No — feature (confidence interrogability) |
+| [HOL-20](https://cjipro.atlassian.net/browse/HOL-20) | Mason | Cognitive load | No — cosmetic (synthesis typography) |
+| [HOL-21](https://cjipro.atlassian.net/browse/HOL-21) | Pratt | Decision-action coupling | No — visual enhancement (override connector) |
+| [HOL-22](https://cjipro.atlassian.net/browse/HOL-22) | Colson | Decision-action coupling | No — engine-contract work (consequence sentence) |
+| [HOL-23](https://cjipro.atlassian.net/browse/HOL-23) | Duke | Regulator survival (Section 166) | **Conditional** — required for Section 166 readiness, not for lock |
+
+#### Missing validation layer
+
+Voice panels test design coherence. They do **not** test whether an investigator in a hurry at 4:45pm on a Friday will actually act on the verdict. Next validation layer = **task-completion study with real analysts**: "Here's a verdict. What do you do next? Show me." Measure time-to-action and action-correctness. Track as a future research arc, not as design iteration.
+
+**Do not re-open the Workspace surface for panel re-scoring without (a) shipping ≥3 of the residual tickets, OR (b) a real-analyst study with new findings.** Synthetic expert voices have hit their ceiling on this surface.
 
 ### Ticket spine — Value + Risk + Diagnosis methodology architecture (SHIPPED 2026-05-18)
 
