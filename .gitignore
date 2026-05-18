@@ -59,3 +59,7 @@ scored/
 # Editor backups
 *.bak
 *.tmp
+
+# Session ephemera too big for git history
+docs/sessions/*/perf-trace.json
+docs/sessions/*/lighthouse/*.json
