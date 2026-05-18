@@ -1269,6 +1269,30 @@ def render_box1(packs: list[dict]) -> str:
         f'<strong style="color:var(--text);">{breadcrumb}</strong>'
     )
 
+    # HOL-12 plain-English synthesis — explains WHY the engine landed here.
+    # Distinct from ACTION (what to do); this is the "what it means" line.
+    # Engine-derived later; stubbed by diagnosis for now.
+    if cell_score:
+        _diag_synthesis = {
+            "INCONCLUSIVE":    ("the assistance and no-assistance arms show "
+                                "indistinguishable outcomes — engine can't yet "
+                                "attribute friction to journey vs support."),
+            "SUPPORT_PROBLEM": ("assistance closes the failure gap — friction "
+                                "lives in the support layer, not the journey "
+                                "design itself."),
+            "JOURNEY_PROBLEM": ("assistance does not close the gap — fix the "
+                                "journey design, not the support around it."),
+            "BOTH":            ("assistance helps but a residual gap remains — "
+                                "both journey and support need attention."),
+        }
+        verdict_synthesis = _diag_synthesis.get(
+            diagnosis_label,
+            f"diagnosis {diagnosis_label} · value {value_label} · risk {risk_label}.",
+        )
+    else:
+        verdict_synthesis = ("verdict pending — engine scenario not yet wired "
+                             "for this selection.")
+
     return render_box(
         header=box_header(key_area, "key area · selection-driven"),
         accent_color=tier_color,
@@ -1280,6 +1304,10 @@ def render_box1(packs: list[dict]) -> str:
         body=(
             body_action_primary("ACTION", recommendation, tier_color)
             + body_chip_strip(supporting_chips)
+            + body_lines([
+                (f'<strong>What this means:</strong> {verdict_synthesis}',
+                 "var(--text-2)"),
+            ])
             + body_quality_strip([
                 "Confidence 0.82",
                 "Designed ceiling 0.85",
@@ -1350,6 +1378,15 @@ def render_box2(packs: list[dict]) -> str:
     p_value = "< 0.001" if not is_neg else "0.42"
     effect = "+34pp dwell gap" if not is_neg else "no gap"
 
+    # HOL-12 plain-English synthesis — what the outcome means for the investigator
+    if is_neg:
+        hypothesis_synthesis = ("hypothesis correctly held null — the signature "
+                                "does NOT appear on this journey; discriminator "
+                                "confirmed.")
+    else:
+        hypothesis_synthesis = ("hypothesis fired — the signature is detectable "
+                                "above statistical baseline; carry into the verdict.")
+
     return render_box(
         header=box_header("HYPOTHESIS", "test bench"),
         accent_color="var(--blue)",
@@ -1371,6 +1408,8 @@ def render_box2(packs: list[dict]) -> str:
              method,
              "var(--teal)"),
         ]) + body_lines([
+            (f'<strong>What this means:</strong> {hypothesis_synthesis}',
+             "var(--text-2)"),
             (f'<strong>Cohort axes:</strong> {" · ".join(cohort_axes[:4]) or "—"}',
              "var(--text-3)"),
             (f'<strong>Evidence:</strong> {" · ".join(evidence[:4]) or "—"}',
