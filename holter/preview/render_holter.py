@@ -192,6 +192,59 @@ _ACTION_COLORS = {
 }
 
 
+# HOL-14 — hover glossary, scoped by dimension because the same literal
+# token (NOMINAL, WATCH, COMMERCIAL-OPPORTUNITY) has distinct meanings
+# across Action / Value / Risk dimensions.
+STATUS_GLOSSARY: dict[str, dict[str, str]] = {
+    "action": {
+        "ACUTE":                  "Highest-priority tier — both value upside and risk exposure are large. Act now with full guardrails.",
+        "REGULATORY-FLAG":        "Material regulatory exposure regardless of value. Compliance review required before any deployment or change.",
+        "COMMERCIAL-OPPORTUNITY": "Large value upside with manageable risk. Strong candidate for the commercial roadmap.",
+        "WATCH":                  "Material but bounded signal. Track over time; revisit if trend or cohort shifts.",
+        "NOMINAL":                "No significant signal across value or risk dimensions. No action required at this time.",
+        "NEEDS_MORE_DATA":        "Insufficient data to compute a confident verdict. Collect more sessions or widen the time window before deciding.",
+        "PENDING":                "Engine has not yet produced a verdict for this selection.",
+    },
+    "diagnosis": {
+        "SUPPORT_PROBLEM": "Assistance arm closes the failure gap — friction is in the support layer, not the journey design.",
+        "JOURNEY_PROBLEM": "Assistance does not close the gap — the journey itself needs to change, not the support around it.",
+        "BOTH":            "Assistance helps but a residual gap remains — both journey design and support layer need attention.",
+        "INCONCLUSIVE":    "Assistance and no-assistance arms show indistinguishable outcomes — the data cannot separate support vs journey causes yet.",
+    },
+    "value": {
+        "NOMINAL":                "Affected population × severity × counterfactual baseline is small. Low business value at stake.",
+        "WATCH":                  "Material value signal but below intervention threshold. Track over time.",
+        "SIGNIFICANT":            "Material value at stake — affected population or severity warrants intervention consideration.",
+        "COMMERCIAL-OPPORTUNITY": "Large value upside — affected population, severity, or counterfactual baseline all favour intervention.",
+    },
+    "risk": {
+        "NOMINAL":         "No regulatory or policy thresholds tripped. Standard handling applies.",
+        "WATCH":           "Risk signals present but below escalation threshold. Monitor.",
+        "ESCALATE":        "Material risk signal — internal escalation triggers met (policy thresholds or vulnerable-cohort over-representation).",
+        "REGULATORY-FLAG": "Regulatory taxonomy match present — external regulator concern likely. Compliance involvement required.",
+    },
+    "severity": {
+        "Positive": "Detector-class packs — signature is expected to fire on this journey.",
+        "Negative": "Discriminator-class packs — signature must NOT fire (used to test for false positives).",
+        "All":      "All packs across detector and discriminator classes.",
+    },
+}
+
+
+def tooltip_token(dimension: str, token: str) -> str:
+    """Wrap a status token in a hover-tooltip span if the glossary defines it.
+
+    Uses the existing [data-tooltip]:hover::after CSS pattern (no JS).
+    Falls back to the bare token if no glossary entry exists.
+    """
+    definition = STATUS_GLOSSARY.get(dimension, {}).get(token)
+    if not definition:
+        return token
+    # Escape embedded double-quotes so the attribute parses cleanly
+    safe = definition.replace('"', "&quot;")
+    return f'<span data-tooltip="{safe}">{token}</span>'
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # CSS — locked design language
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1054,9 +1107,9 @@ def render_filter_strip(packs: list[dict]) -> str:
   <div class="holter-filter-section">
     <span class="holter-filter-label">Severity</span>
     <div class="holter-filter-radios">
-      <label><input type="radio" name="severity" value="all" checked> All</label>
-      <label><input type="radio" name="severity" value="positive"> Positive</label>
-      <label><input type="radio" name="severity" value="negative"> Negative</label>
+      <label><input type="radio" name="severity" value="all" checked> {tooltip_token("severity", "All")}</label>
+      <label><input type="radio" name="severity" value="positive"> {tooltip_token("severity", "Positive")}</label>
+      <label><input type="radio" name="severity" value="negative"> {tooltip_token("severity", "Negative")}</label>
     </div>
   </div>
   <div class="holter-filter-sep"></div>
@@ -1239,12 +1292,13 @@ def render_box1(packs: list[dict]) -> str:
         diagnosis_label = cell_score.diagnosis.diagnosis
         value_label     = cell_score.value.tier
         risk_label      = cell_score.risk.tier
+        # HOL-14: wrap each tier value in a hover-glossary span
         supporting_chips = [
-            ("DIAGNOSIS", diagnosis_label,
+            ("DIAGNOSIS", tooltip_token("diagnosis", diagnosis_label),
              _DIAGNOSIS_COLORS.get(diagnosis_label, "var(--amber)")),
-            ("VALUE",     value_label,
+            ("VALUE",     tooltip_token("value", value_label),
              _VALUE_COLORS.get(value_label, "var(--amber)")),
-            ("RISK",      risk_label,
+            ("RISK",      tooltip_token("risk", risk_label),
              _RISK_COLORS.get(risk_label, "var(--amber)")),
         ]
     else:
@@ -1297,7 +1351,7 @@ def render_box1(packs: list[dict]) -> str:
         header=box_header(key_area, "key area · selection-driven"),
         accent_color=tier_color,
         headline=headline_tier_badge(
-            tier=tier,
+            tier=tooltip_token("action", tier),  # HOL-14 hover glossary
             color=tier_color,
             context=headline_context,
         ),
@@ -1572,22 +1626,21 @@ def render_box_placement_posture(packs: list[dict]) -> str:
         else: counts["WATCH"] += 1
     dominant = max(counts, key=counts.get)
     dom_color = _ACTION_COLORS.get(dominant, "var(--amber)")
+    # HOL-14 — wrap each action-tier token in hover-glossary
+    chip_rows = [
+        (tooltip_token("action", t), str(counts[t]), _ACTION_COLORS[t])
+        for t in ("ACUTE", "REGULATORY-FLAG", "COMMERCIAL-OPPORTUNITY",
+                  "WATCH", "NOMINAL", "NEEDS_MORE_DATA")
+    ]
     return render_box(
         header=box_header("PLACEMENT POSTURE", "Agentic AI"),
         accent_color=dom_color,
         headline=headline_tier_badge(
-            tier=f"{dominant} · {counts[dominant]}/{len(cells)}",
+            tier=f"{tooltip_token('action', dominant)} · {counts[dominant]}/{len(cells)}",
             color=dom_color,
             context="Dominant action tier across placement cells · Diagnosis can override the 2×2",
         ),
-        body=body_chip_strip([
-            ("ACUTE",                  str(counts["ACUTE"]),                  _ACTION_COLORS["ACUTE"]),
-            ("REGULATORY-FLAG",        str(counts["REGULATORY-FLAG"]),        _ACTION_COLORS["REGULATORY-FLAG"]),
-            ("COMMERCIAL-OPPORTUNITY", str(counts["COMMERCIAL-OPPORTUNITY"]), _ACTION_COLORS["COMMERCIAL-OPPORTUNITY"]),
-            ("WATCH",                  str(counts["WATCH"]),                  _ACTION_COLORS["WATCH"]),
-            ("NOMINAL",                str(counts["NOMINAL"]),                _ACTION_COLORS["NOMINAL"]),
-            ("NEEDS_MORE_DATA",        str(counts["NEEDS_MORE_DATA"]),        _ACTION_COLORS["NEEDS_MORE_DATA"]),
-        ]) + body_lines([
+        body=body_chip_strip(chip_rows) + body_lines([
             ("CLARK-style action tier from Risk × Value 2×2", "var(--blue)"),
             ("Diagnosis overrides INCONCLUSIVE → NEEDS_MORE_DATA", "var(--text-3)"),
             ("JOURNEY_PROBLEM → 'fix the journey' verb regardless of tier", "var(--text-3)"),
@@ -1632,8 +1685,12 @@ def render_box_confidence_protocol(packs: list[dict]) -> str:
 
 def _dist_box(packs: list[dict], *, name: str, attr_path: tuple[str, str],
               color_map: dict[str, str], methodology_version: str,
-              context_template: str) -> str:
-    """Generic distribution box for Diagnosis / Value / Risk."""
+              context_template: str, glossary_dim: str = "") -> str:
+    """Generic distribution box for Diagnosis / Value / Risk.
+
+    glossary_dim: dimension key into STATUS_GLOSSARY for hover tooltips
+    on tier tokens (HOL-14). Falls back to bare tokens if unset.
+    """
     cells = [get_pack_cell(p["meta"]["pack_name"]) for p in packs]
     cells = [c for c in cells if c is not None]
     if not cells:
@@ -1651,7 +1708,10 @@ def _dist_box(packs: list[dict], *, name: str, attr_path: tuple[str, str],
         tier_counts[tier] = tier_counts.get(tier, 0) + 1
     dominant = max(tier_counts, key=tier_counts.get)
     dom_color = color_map.get(dominant, "var(--amber)")
-    chip_rows = [(t, str(tier_counts.get(t, 0)), color_map.get(t, "#7A7A7A"))
+    # HOL-14: wrap each tier label in hover glossary
+    chip_rows = [(tooltip_token(glossary_dim, t),
+                  str(tier_counts.get(t, 0)),
+                  color_map.get(t, "#7A7A7A"))
                  for t in color_map.keys()]
     # Two evidence cards for the dominant tier
     dominant_packs = []
@@ -1673,7 +1733,7 @@ def _dist_box(packs: list[dict], *, name: str, attr_path: tuple[str, str],
         header=box_header(f"{name} DISTRIBUTION", f"v{methodology_version}"),
         accent_color=dom_color,
         headline=headline_tier_badge(
-            tier=f"{dominant} · {tier_counts[dominant]}/{len(cells)}",
+            tier=f"{tooltip_token(glossary_dim, dominant)} · {tier_counts[dominant]}/{len(cells)}",
             color=dom_color,
             context=context_template,
         ),
@@ -1694,6 +1754,7 @@ def render_box_diagnosis_dist(packs: list[dict]) -> str:
         color_map=_DIAGNOSIS_COLORS,
         methodology_version="0.1.0",
         context_template="Dominant Diagnosis · runs BEFORE Risk/Value · can override 2×2",
+        glossary_dim="diagnosis",
     )
 
 
@@ -1704,6 +1765,7 @@ def render_box_value_dist(packs: list[dict]) -> str:
         color_map=_VALUE_COLORS,
         methodology_version="0.1.0",
         context_template="Dominant Value tier · severity × population × frequency × cohort × counterfactual",
+        glossary_dim="value",
     )
 
 
@@ -1714,6 +1776,7 @@ def render_box_risk_dist(packs: list[dict]) -> str:
         color_map=_RISK_COLORS,
         methodology_version="0.1.0",
         context_template="Dominant Risk tier · regulatory taxonomy × bank policy × Chronicle precedent",
+        glossary_dim="risk",
     )
 
 
