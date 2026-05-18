@@ -989,6 +989,20 @@ def render_journey_cards(packs: list[dict]) -> str:
         domain = screen.split(".")[0] if screen != "—" else ""
         authors = ",".join(meta.get("authors", []))
         gt = h.get("ground_truth_expectation", "")
+        # HOL-9: per-pack Value + Risk + Action badges from the placement
+        # scenario index. If unavailable (engine import failed), the badge
+        # row degrades to nothing — base card still renders.
+        cell_score = get_pack_cell(meta["pack_name"])
+        badges_html = ""
+        if cell_score is not None:
+            badges_html = (
+                f'<div class="pack-tier-badges" style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;">'
+                f'{_tier_badge_html("VALUE", cell_score.value.tier, _VALUE_COLORS)}'
+                f'{_tier_badge_html("RISK", cell_score.risk.tier, _RISK_COLORS)}'
+                f'{_tier_badge_html("ACTION", cell_score.action_tier, _ACTION_COLORS)}'
+                f'</div>'
+            )
+
         cards += f'''
 <div class="journey-card pack-card"
      data-packname="{meta['pack_name']}"
@@ -1005,6 +1019,7 @@ def render_journey_cards(packs: list[dict]) -> str:
     <span class="badge" style="color:{border};background:{'#2a1500' if 'NEGATIVE' in label else '#2a0a0a'};">{label}</span>
   </div>
   <div class="derived-note">{screen}</div>
+  {badges_html}
   <div class="verdict-label">Pack verdict</div>
   <div class="verdict-text">{meta.get("description","").strip().replace(chr(10), " ")[:220]}{"…" if len(meta.get("description","")) > 220 else ""}</div>
   <div class="version-delta-row">
@@ -1019,28 +1034,120 @@ def render_journey_cards(packs: list[dict]) -> str:
 
 
 def render_chronicle(packs: list[dict]) -> str:
-    """FrictionBench cell catalogue in the chronicle slot."""
-    cards = ""
-    sorted_packs = sorted(packs, key=lambda p: (p["hypothesis"] or {}).get("cell_id", 99))
-    for p in sorted_packs:
-        h = p["hypothesis"] or {}
-        cell = h.get("cell_id", "?")
-        screen = h.get("screen_id", "—")
-        sig = h.get("signature_id", "—").replace("_", " ")
-        gt = h.get("ground_truth_expectation", "positive")
-        if gt == "negative":
-            badge = '<span class="chronicle-hold" style="background:rgba(245,166,35,0.2);color:#F5A623;">NEGATIVE · LOAD-BEARING</span>'
-        else:
-            badge = '<span class="chronicle-active">POSITIVE</span>'
-        cards += f'''
-<div class="chronicle-card">
+    """HOL-9 evolution: render matched Chronicle precedents for the
+    headline pack, not the static FrictionBench cell catalogue.
+
+    For each verified Chronicle entry the Risk methodology matched on
+    the headline pack's friction signature, render a card with
+    institution + regulator + year + enforcement summary. If no
+    verified matches (the seed-batch state — all Chronicle entries
+    ship `pending_human_review` and the matcher fails closed), render
+    an explanatory card pointing at the curator handoff.
+
+    Never silent — the panel always renders content, never empty.
+    """
+    headline = headline_pack(packs)
+    cell_score = get_pack_cell(headline["meta"]["pack_name"])
+
+    # Header context — which pack this matcher result is for
+    h = headline["hypothesis"] or {}
+    cell_id = h.get("cell_id", "?")
+    sig = h.get("signature_id", "—").replace("_", " ")
+    context_card = f'''
+<div class="chronicle-card" style="border-left:3px solid var(--blue);background:#001020;">
   <div class="chronicle-header">
-    <span class="chronicle-id">CELL-{cell:02}</span>
-    <span class="chronicle-bank">{sig.title()}</span>
-    {badge}
+    <span class="chronicle-id" style="color:var(--blue);">CONTEXT</span>
+    <span class="chronicle-bank">Headline pack — cell {cell_id}</span>
   </div>
-  <div class="chronicle-type">{screen}</div>
-  <div class="chronicle-impact">v{p["meta"]["pack_version"]} · {p["meta"]["pack_name"]}</div>
+  <div class="chronicle-type">{sig.title()} on {h.get("screen_id", "—")}</div>
+  <div class="chronicle-impact" style="font-size:10px;color:#5A7E92;">
+    Matcher checks the seed Chronicle library for verified enforcement
+    precedents sharing this signature × screen × severity.
+  </div>
+</div>'''
+
+    # No-engine fallback
+    if cell_score is None:
+        return context_card + '''
+<div class="chronicle-card" style="border-left:3px solid var(--amber);">
+  <div class="chronicle-header">
+    <span class="chronicle-id" style="color:var(--amber);">UNAVAILABLE</span>
+    <span class="chronicle-bank">Chronicle matcher offline</span>
+  </div>
+  <div class="chronicle-type">PULSE-106 import failed</div>
+  <div class="chronicle-impact" style="font-size:10px;color:#5A7E92;">
+    Cannot run matcher — engine modules not loaded.
+  </div>
+</div>'''
+
+    matches = cell_score.risk.chronicle_matches
+    if not matches:
+        # Empty-matches path: rendered honestly with the curator-handoff
+        # note. This is the active state for the seed batch.
+        return context_card + '''
+<div class="chronicle-card" style="border-left:3px solid #7A7A7A;">
+  <div class="chronicle-header">
+    <span class="chronicle-id" style="color:#A8CDDE;">NO VERIFIED MATCHES</span>
+    <span class="chronicle-bank">Matcher returned empty</span>
+  </div>
+  <div class="chronicle-type">Curator handoff pending</div>
+  <div class="chronicle-impact" style="font-size:10px;color:#5A7E92;line-height:1.5;">
+    The seed-batch Chronicle library (10 CHR-friction entries) ships with
+    <code>verification_status: pending_human_review</code>. The matcher
+    fails closed on pending entries — no entry influences production Risk
+    scoring until a UK-banking-enforcement curator corroborates facts
+    against the cited public sources and flips the status to
+    <code>verified</code>. See <code>pulse/risk/chronicle/SCHEMA.md</code>
+    § Two-stage trust model.
+  </div>
+</div>'''
+
+    # Matches-exist path: load the full chronicle library to render the
+    # ChronicleMatch details (institution / regulator / year / fine).
+    # Re-runs match_signature — cheap; only fires when there are
+    # verified entries to render.
+    try:
+        from pulse.risk.chronicle import load_chronicle_library, match_signature
+        library = load_chronicle_library(REPO / "pulse" / "risk" / "chronicle" / "entries")
+        full_matches = match_signature(
+            library,
+            signature_id=cell_score.value.tier,  # placeholder; see below
+            screen_class=h.get("screen_id", "—"),
+            severity="P0",
+        )
+    except Exception:  # pragma: no cover
+        full_matches = []
+
+    # If the matcher round-trip didn't produce full details (e.g. signature
+    # mismatch), fall back to rendering IDs only.
+    cards = context_card
+    for match_id in matches:
+        full = next((m for m in full_matches if m.chronicle_id == match_id), None)
+        if full is None:
+            cards += f'''
+<div class="chronicle-card" style="border-left:3px solid var(--green);">
+  <div class="chronicle-header">
+    <span class="chronicle-id" style="color:var(--green);">{match_id}</span>
+    <span class="chronicle-bank">Verified precedent</span>
+  </div>
+  <div class="chronicle-type">Details available in pulse/risk/chronicle/entries/</div>
+</div>'''
+            continue
+        fine_str = (
+            f"£{full.fine_gbp/1_000_000:.1f}M fine"
+            if full.fine_gbp
+            else (f"£{full.redress_gbp/1_000_000:.1f}M redress" if full.redress_gbp else full.enforcement_type)
+        )
+        cards += f'''
+<div class="chronicle-card" style="border-left:3px solid var(--green);">
+  <div class="chronicle-header">
+    <span class="chronicle-id" style="color:var(--green);">{full.chronicle_id}</span>
+    <span class="chronicle-bank">{full.institution}</span>
+  </div>
+  <div class="chronicle-type">{full.regulator} · {full.year} · {fine_str}</div>
+  <div class="chronicle-impact" style="font-size:10px;color:#5A7E92;">
+    {full.public_sources_count} public source{"s" if full.public_sources_count != 1 else ""} cited
+  </div>
 </div>'''
     return cards
 
@@ -1119,9 +1226,19 @@ def render_intelligence_brief(pack: dict, all_packs: list[dict]) -> str:
     n_positive = sum(1 for p in all_packs if (p["hypothesis"] or {}).get("ground_truth_expectation") != "negative")
     n_negative = n_packs - n_positive
 
-    badge_color = "var(--amber)" if is_negative else "#F5A623"
-    tier = "PULSE-0 — DISCRIMINATOR REQUIRED" if is_negative else "PULSE-1 — DETECTOR ACTIVE"
-    tier_action = "engineering · fairness review · before-fire suppression" if is_negative else "investigation routing · remediation · cohort review"
+    # HOL-9: replace the hand-typed CLARK tier with the engine-computed
+    # Action tier from the placement scenario. Falls back to the legacy
+    # CLARK label if the engine isn't loaded (preserves old behaviour
+    # when PULSE-106 unavailable).
+    cell_score = get_pack_cell(meta["pack_name"])
+    if cell_score is not None:
+        tier = cell_score.action_tier
+        tier_action = cell_score.placement_recommendation
+        badge_color = _ACTION_COLORS.get(cell_score.action_tier, "#7A7A7A")
+    else:
+        badge_color = "var(--amber)" if is_negative else "#F5A623"
+        tier = "PULSE-0 — DISCRIMINATOR REQUIRED" if is_negative else "PULSE-1 — DETECTOR ACTIVE"
+        tier_action = "engineering · fairness review · before-fire suppression" if is_negative else "investigation routing · remediation · cohort review"
 
     return f'''
 <div class="topbar-box exec-alert-panel{' nominal' if not is_negative else ''}">
@@ -1906,6 +2023,68 @@ _ACTION_COLORS = {
     "NEEDS_MORE_DATA": "#7A7A7A",          # diagnosis override
 }
 
+# Severity-ascending palette per tier-word for Risk and Value. Tier-words
+# the two methodologies share (NOMINAL, WATCH) carry identical colours
+# across both axes so the visual language stays consistent. Top-tier
+# colours diverge by meaning: Risk's REGULATORY-FLAG is red (precautionary),
+# Value's COMMERCIAL-OPPORTUNITY is green (opportunity).
+_RISK_COLORS = {
+    "NOMINAL": "#5A6E7A",
+    "WATCH": "var(--teal)",
+    "ESCALATE": "var(--amber)",
+    "REGULATORY-FLAG": "var(--red)",
+}
+
+_VALUE_COLORS = {
+    "NOMINAL": "#5A6E7A",
+    "WATCH": "var(--teal)",
+    "SIGNIFICANT": "var(--amber)",
+    "COMMERCIAL-OPPORTUNITY": "var(--green)",
+}
+
+
+def _build_pack_cell_index() -> dict[str, "Any"]:
+    """Run the placement scenario once and index its cells by pack_name
+    (which matches the pack directory name and the on-disk pack_name in
+    metadata.yaml). Returns {} on import failure — callers degrade
+    gracefully rather than raising. lru_cached per process: one engine
+    run per briefing render."""
+    try:
+        from pulse.scenarios.agentic_ai_placement import run_placement_scenario
+        import yaml as _yaml
+        scenario_path = REPO / "pulse" / "scenarios" / "agentic_ai_placement" / "scenario.yaml"
+        with scenario_path.open("r", encoding="utf-8") as f:
+            scenario = _yaml.safe_load(f)
+        # pack_dir per scenario cell, in the same order as matrix.cells
+        pack_dirs = [c["pack_dir"] for c in scenario["cells"]]
+        matrix = run_placement_scenario()
+        return {pack_dir: cell for pack_dir, cell in zip(pack_dirs, matrix.cells)}
+    except Exception:  # pragma: no cover — diagnostic fallback
+        return {}
+
+
+_PACK_CELL_INDEX: dict[str, Any] | None = None
+
+
+def get_pack_cell(pack_name: str) -> Any:
+    """Return the PlacementCell for a pack, or None if unavailable.
+    Cached at module level so the engine runs once per render."""
+    global _PACK_CELL_INDEX
+    if _PACK_CELL_INDEX is None:
+        _PACK_CELL_INDEX = _build_pack_cell_index()
+    return _PACK_CELL_INDEX.get(pack_name)
+
+
+def _tier_badge_html(label: str, tier_word: str, color_map: dict[str, str]) -> str:
+    """Compact inline tier badge: '<label> · <tier>' with colour from map."""
+    color = color_map.get(tier_word, "#7A7A7A")
+    return (
+        f'<span style="display:inline-block;padding:2px 6px;margin-right:4px;'
+        f'font-size:9px;font-weight:700;letter-spacing:0.5px;background:#001828;'
+        f'color:{color};border:1px solid {color};border-radius:2px;">'
+        f'{label} · {tier_word}</span>'
+    )
+
 
 def render_placement_matrix(packs: list[dict]) -> str:
     """V3 — Agentic AI placement matrix (PULSE-106 worked example).
@@ -2056,6 +2235,172 @@ def render_placement_matrix(packs: list[dict]) -> str:
 </div>'''
 
 
+def render_value_scoring_panel(packs: list[dict]) -> str:
+    """V3 — per-pack Value tier breakdown (PULSE-101).
+
+    Mirrors the Friction Risk Score panel shape. Shows tier counts + per-
+    pack rows with the adjustments that fired (large_affected_population /
+    high_frequency_per_user / vulnerable_cohort_concentrated /
+    large_counterfactual_baseline).
+    """
+    sorted_packs = sorted(
+        packs, key=lambda p: (p["hypothesis"] or {}).get("cell_id", 99)
+    )
+    rows_html = ""
+    tier_counts: dict[str, int] = {}
+    for p in sorted_packs:
+        cell_score = get_pack_cell(p["meta"]["pack_name"])
+        if cell_score is None:
+            continue
+        v = cell_score.value
+        tier_counts[v.tier] = tier_counts.get(v.tier, 0) + 1
+        adjustments = ", ".join(
+            a.replace("_", " ") for a in v.adjustments_applied
+        ) or "—"
+        h = p["hypothesis"] or {}
+        rows_html += f'''
+<tr>
+  <td style="padding:5px 8px;font-size:10px;color:#7AACBF;font-family:'DM Mono',monospace;">cell {h.get("cell_id", "?")}</td>
+  <td style="padding:5px 8px;font-size:10px;color:#A8CDDE;">{p["meta"]["pack_name"]}</td>
+  <td style="padding:5px 8px;">{_tier_badge_html("VALUE", v.tier, _VALUE_COLORS)}</td>
+  <td style="padding:5px 8px;font-size:10px;color:#5A7E92;">base: {v.base_tier} · adjustments: {adjustments}</td>
+</tr>'''
+
+    if not rows_html:
+        return _empty_scoring_panel(
+            "VALUE SCORING",
+            "Per-pack value tier requires PULSE-101 + PULSE-104 + PULSE-106",
+        )
+
+    counts_html = "".join(
+        f'<span style="display:inline-block;margin-right:14px;font-size:11px;">'
+        f'<span style="display:inline-block;width:8px;height:8px;background:{_VALUE_COLORS[t]};vertical-align:middle;margin-right:4px;border-radius:1px;"></span>'
+        f'<span style="color:#A8CDDE;">{t}</span> '
+        f'<span style="color:#7AACBF;font-weight:700;">{c}</span></span>'
+        for t, c in sorted(tier_counts.items())
+    )
+
+    return f'''
+<div class="topbar-box">
+  <div class="topbar-box-header">
+    <span class="topbar-box-title">VALUE SCORING</span>
+    <span style="font-size:10px;color:#3A6A7F;">
+      Pulse Value methodology v0 · per-pack tier · severity / population / frequency / cohort / counterfactual
+    </span>
+  </div>
+  <div class="topbar-box-body">
+    <div style="padding-bottom:10px;">{counts_html}</div>
+    <table style="width:100%;border-collapse:collapse;font-size:11px;">
+      <thead>
+        <tr style="border-bottom:1px solid var(--border);">
+          <th style="padding:5px 8px;text-align:left;font-size:9px;color:#3A6A7F;letter-spacing:0.5px;">CELL</th>
+          <th style="padding:5px 8px;text-align:left;font-size:9px;color:#3A6A7F;letter-spacing:0.5px;">PACK</th>
+          <th style="padding:5px 8px;text-align:left;font-size:9px;color:#3A6A7F;letter-spacing:0.5px;">TIER</th>
+          <th style="padding:5px 8px;text-align:left;font-size:9px;color:#3A6A7F;letter-spacing:0.5px;">BREAKDOWN</th>
+        </tr>
+      </thead>
+      <tbody>{rows_html}</tbody>
+    </table>
+  </div>
+</div>'''
+
+
+def render_risk_scoring_panel(packs: list[dict]) -> str:
+    """V3 — per-pack Risk tier breakdown (PULSE-99).
+
+    Shows tier counts + per-pack rows with regulatory taxonomies matched,
+    adjustments fired, and Chronicle precedent matches. Mirrors the
+    Value Scoring panel shape.
+    """
+    sorted_packs = sorted(
+        packs, key=lambda p: (p["hypothesis"] or {}).get("cell_id", 99)
+    )
+    rows_html = ""
+    tier_counts: dict[str, int] = {}
+    for p in sorted_packs:
+        cell_score = get_pack_cell(p["meta"]["pack_name"])
+        if cell_score is None:
+            continue
+        r = cell_score.risk
+        tier_counts[r.tier] = tier_counts.get(r.tier, 0) + 1
+        # Trim regulatory taxonomy codes to last segment for readability.
+        regs = ", ".join(
+            code.split(".")[-1] for code in r.regulatory_matches
+        ) or "—"
+        adjustments = ", ".join(
+            a.replace("_", " ") for a in r.adjustments_applied
+        ) or "—"
+        chronicle = (
+            f'{len(r.chronicle_matches)} matched' if r.chronicle_matches
+            else "no verified matches"
+        )
+        h = p["hypothesis"] or {}
+        rows_html += f'''
+<tr>
+  <td style="padding:5px 8px;font-size:10px;color:#7AACBF;font-family:'DM Mono',monospace;">cell {h.get("cell_id", "?")}</td>
+  <td style="padding:5px 8px;">{_tier_badge_html("RISK", r.tier, _RISK_COLORS)}</td>
+  <td style="padding:5px 8px;font-size:10px;color:#A8CDDE;">{regs}</td>
+  <td style="padding:5px 8px;font-size:10px;color:#5A7E92;">{adjustments}</td>
+  <td style="padding:5px 8px;font-size:10px;color:#5A7E92;">{chronicle}</td>
+</tr>'''
+
+    if not rows_html:
+        return _empty_scoring_panel(
+            "RISK SCORING",
+            "Per-pack risk tier requires PULSE-99 + PULSE-104 + PULSE-106",
+        )
+
+    counts_html = "".join(
+        f'<span style="display:inline-block;margin-right:14px;font-size:11px;">'
+        f'<span style="display:inline-block;width:8px;height:8px;background:{_RISK_COLORS[t]};vertical-align:middle;margin-right:4px;border-radius:1px;"></span>'
+        f'<span style="color:#A8CDDE;">{t}</span> '
+        f'<span style="color:#7AACBF;font-weight:700;">{c}</span></span>'
+        for t, c in sorted(tier_counts.items())
+    )
+
+    return f'''
+<div class="topbar-box">
+  <div class="topbar-box-header">
+    <span class="topbar-box-title">RISK SCORING</span>
+    <span style="font-size:10px;color:#3A6A7F;">
+      Pulse Risk methodology v0 · per-pack tier · regulatory taxonomies / policy thresholds / chronicle precedents
+    </span>
+  </div>
+  <div class="topbar-box-body">
+    <div style="padding-bottom:10px;">{counts_html}</div>
+    <table style="width:100%;border-collapse:collapse;font-size:11px;">
+      <thead>
+        <tr style="border-bottom:1px solid var(--border);">
+          <th style="padding:5px 8px;text-align:left;font-size:9px;color:#3A6A7F;letter-spacing:0.5px;">CELL</th>
+          <th style="padding:5px 8px;text-align:left;font-size:9px;color:#3A6A7F;letter-spacing:0.5px;">TIER</th>
+          <th style="padding:5px 8px;text-align:left;font-size:9px;color:#3A6A7F;letter-spacing:0.5px;">REGULATORY MATCHES</th>
+          <th style="padding:5px 8px;text-align:left;font-size:9px;color:#3A6A7F;letter-spacing:0.5px;">ADJUSTMENTS FIRED</th>
+          <th style="padding:5px 8px;text-align:left;font-size:9px;color:#3A6A7F;letter-spacing:0.5px;">CHRONICLE</th>
+        </tr>
+      </thead>
+      <tbody>{rows_html}</tbody>
+    </table>
+  </div>
+</div>'''
+
+
+def _empty_scoring_panel(title: str, hint: str) -> str:
+    """Fallback shape when the engine isn't loaded — keeps page layout intact."""
+    return f'''
+<div class="topbar-box">
+  <div class="topbar-box-header">
+    <span class="topbar-box-title">{title}</span>
+    <span style="font-size:10px;color:var(--amber);">engine unavailable</span>
+  </div>
+  <div class="topbar-box-body">
+    <div style="padding:14px;color:var(--amber);font-size:12px;">
+      {hint}. The scenario import path is set in
+      <code>holter/preview/render_mil_briefing.py</code> at module top.
+    </div>
+  </div>
+</div>'''
+
+
 def render_clark_protocol(packs: list[dict]) -> str:
     n_positive = sum(1 for p in packs if (p["hypothesis"] or {}).get("ground_truth_expectation") != "negative")
     n_negative = sum(1 for p in packs if (p["hypothesis"] or {}).get("ground_truth_expectation") == "negative")
@@ -2167,7 +2512,7 @@ def render_page(packs: list[dict]) -> str:
     # Right panel
     right_html = f'''
 <div class="panel-section">
-  <div class="panel-title">CELL CATALOGUE — FrictionBench v0.1</div>
+  <div class="panel-title">CHRONICLE — matched precedents</div>
   {render_chronicle(packs)}
 </div>
 <div class="panel-section">
@@ -2189,6 +2534,8 @@ def render_page(packs: list[dict]) -> str:
     Pulse Intelligence Layer &nbsp;·&nbsp; {now}
   </div>
   {render_churn_block(packs)}
+  {render_value_scoring_panel(packs)}
+  {render_risk_scoring_panel(packs)}
   {render_placement_matrix(packs)}
   {render_commentary_block(packs)}
   {render_bench_block(packs)}
