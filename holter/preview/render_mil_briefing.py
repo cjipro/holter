@@ -209,6 +209,30 @@ a { color: var(--blue); text-decoration: none; }
   background-repeat: no-repeat; background-position: right 8px center;
   background-size: 8px 6px; cursor: not-allowed; opacity: 0.85;
 }
+.topnav-select.active {
+  cursor: pointer; opacity: 1;
+  color: var(--text);
+}
+.topnav-select.active:hover { border-color: var(--blue); }
+.topnav-select.active:focus { outline: none; border-color: var(--blue); }
+.topnav-select.active.filter-on {
+  border-color: var(--amber);
+  color: var(--amber);
+  background-image: url("data:image/svg+xml;charset=utf-8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 8' fill='%23F5A623'><path d='M0 0l7 8 7-8z'/></svg>");
+}
+.topnav-reset {
+  background: transparent;
+  border: 1px solid var(--border); border-radius: 4px;
+  padding: 4px 10px;
+  font-family: var(--mono); font-size: 11px;
+  color: var(--text-3);
+  cursor: pointer; text-transform: uppercase; letter-spacing: 0.8px;
+  margin-left: 4px;
+}
+.topnav-reset:hover { color: var(--text); border-color: var(--text-3); }
+.topnav-reset.active {
+  color: var(--amber); border-color: var(--amber);
+}
 .topnav-select-label {
   font-family: var(--mono); font-size: 9px; color: var(--text-3);
   text-transform: uppercase; letter-spacing: 0.8px; margin-right: 4px;
@@ -817,8 +841,19 @@ def render_journey_cards(packs: list[dict]) -> str:
         chips += f'<span class="pack-chip">{analytic_method}</span>'
         if "NEGATIVE" in label:
             chips += '<span class="pack-chip negative">DISCRIMINATOR ACTIVE</span>'
+        domain = screen.split(".")[0] if screen != "—" else ""
+        authors = ",".join(meta.get("authors", []))
+        gt = h.get("ground_truth_expectation", "")
         cards += f'''
-<div class="journey-card" style="border-left:3px solid {border};">
+<div class="journey-card pack-card"
+     data-packname="{meta['pack_name']}"
+     data-author="{authors}"
+     data-domain="{domain}"
+     data-screen="{screen}"
+     data-signature="{h.get('signature_id', '')}"
+     data-gt="{gt}"
+     data-cell="{cell}"
+     style="border-left:3px solid {border};">
   <div class="card-header">
     <span class="rank-num">#{i}</span>
     <span class="journey-name">Cell {cell} · {sig.title()}</span>
@@ -1045,15 +1080,15 @@ def render_volume_brief_for_box2(packs: list[dict], screens: list[dict]) -> str:
   </div>
   <div class="topbar-box-body">
     <div class="issues-stat-row">
-      <span class="issues-stat-num" style="color:var(--teal);">{n_positive}</span>
+      <span class="issues-stat-num" style="color:var(--teal);" data-count="positive">{n_positive}</span>
       <div><div class="issues-stat-label">Positive</div><div class="issues-stat-sub">DETECTOR ACTIVE cells</div></div>
     </div>
     <div class="issues-stat-row">
-      <span class="issues-stat-num" style="color:var(--amber);">{n_negative}</span>
+      <span class="issues-stat-num" style="color:var(--amber);" data-count="negative">{n_negative}</span>
       <div><div class="issues-stat-label">Negative</div><div class="issues-stat-sub">LOAD-BEARING · discriminator MUST suppress</div></div>
     </div>
     <div class="issues-stat-row">
-      <span class="issues-stat-num" style="color:var(--blue);">{len(packs)}</span>
+      <span class="issues-stat-num" style="color:var(--blue);" data-count="total">{len(packs)}</span>
       <div><div class="issues-stat-label">Total</div><div class="issues-stat-sub">cells covered</div></div>
     </div>
     <div class="issues-divider"></div>
@@ -1069,17 +1104,17 @@ def render_metrics_strip(packs: list[dict]) -> str:
     return f'''
 <div class="metrics-strip">
   <div class="metric-card">
-    <div class="metric-value" style="color:var(--teal);">{n_packs}</div>
+    <div class="metric-value" style="color:var(--teal);" data-count="metric-total">{n_packs}</div>
     <div class="metric-label">Cells covered</div>
-    <div class="metric-sub">of 12 FrictionBench v0.1</div>
+    <div class="metric-sub" data-count="metric-total-sub">of 12 FrictionBench v0.1</div>
   </div>
   <div class="metric-card">
-    <div class="metric-value" style="color:var(--amber);">{n_negative}</div>
+    <div class="metric-value" style="color:var(--amber);" data-count="metric-negative">{n_negative}</div>
     <div class="metric-label">Load-bearing negative</div>
     <div class="metric-sub">discriminator required</div>
   </div>
   <div class="metric-card">
-    <div class="metric-value" style="color:var(--blue);">{fairness_enforced}</div>
+    <div class="metric-value" style="color:var(--blue);" data-count="metric-fairness">{fairness_enforced}</div>
     <div class="metric-label">Fairness enforced</div>
     <div class="metric-sub">all packs (regulator-defensible)</div>
   </div>
@@ -1236,15 +1271,198 @@ def render_bench_block(packs: list[dict]) -> str:
 </div>'''
 
 
+FILTER_JS = """
+<script>
+/* HOL-10 phase 1 — top-nav filtering.
+ * Reads Product / Owner / Domain dropdowns, hides non-matching .pack-card
+ * elements, recomputes counts in box1 / box2 / metrics-strip, syncs URL
+ * query params, and toggles the Reset button + dropdown styling.
+ * No backend; pure client-side. State shareable via URL. */
+(function () {
+  const FILTERS = ['product', 'owner', 'domain'];
+  const FILTER_TO_DATA = {
+    product: 'packname',
+    owner:   'author',
+    domain:  'domain',
+  };
+
+  const $selects = FILTERS.map(f => document.getElementById('filter-' + f));
+  const $resetBtn = document.getElementById('filter-reset');
+  const $cards = Array.from(document.querySelectorAll('.pack-card'));
+
+  function readURLState() {
+    const params = new URLSearchParams(window.location.search);
+    FILTERS.forEach((f, i) => {
+      const v = params.get(f) || '';
+      if ($selects[i]) $selects[i].value = v;
+    });
+  }
+
+  function writeURLState() {
+    const params = new URLSearchParams();
+    FILTERS.forEach((f, i) => {
+      const v = $selects[i] && $selects[i].value;
+      if (v) params.set(f, v);
+    });
+    const qs = params.toString();
+    const url = window.location.pathname + (qs ? '?' + qs : '');
+    history.replaceState(null, '', url);
+  }
+
+  function matches(card) {
+    for (let i = 0; i < FILTERS.length; i++) {
+      const sel = $selects[i];
+      if (!sel || !sel.value) continue;
+      const dataKey = FILTER_TO_DATA[FILTERS[i]];
+      const cardVal = card.dataset[dataKey] || '';
+      if (FILTERS[i] === 'owner') {
+        // multi-value field — comma-separated authors
+        const authors = cardVal.split(',').map(s => s.trim());
+        if (!authors.includes(sel.value)) return false;
+      } else if (cardVal !== sel.value) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function recomputeCounts(visibleCards) {
+    let positive = 0, negative = 0, fairness = 0;
+    visibleCards.forEach(c => {
+      if (c.dataset.gt === 'negative') negative++;
+      else positive++;
+      // every pack in this dataset declares fairness_methods_required:true
+      // we proxy via presence of the FAIRNESS chip on the card
+      if (c.querySelector('.pack-chip.fairness')) fairness++;
+    });
+    const total = visibleCards.length;
+
+    function setText(selector, value) {
+      document.querySelectorAll(selector).forEach(el => { el.textContent = value; });
+    }
+
+    setText('[data-count="positive"]', positive);
+    setText('[data-count="negative"]', negative);
+    setText('[data-count="total"]', total);
+    setText('[data-count="metric-total"]', total);
+    setText('[data-count="metric-total-sub"]',
+            total === 12 ? 'of 12 FrictionBench v0.1'
+                         : 'of 12 FrictionBench v0.1 · ' + (12 - total) + ' filtered out');
+    setText('[data-count="metric-negative"]', negative);
+    setText('[data-count="metric-fairness"]', fairness);
+    setText('[data-count="coverage-score"]', total + '/12');
+    setText('[data-count="coverage-delta"]',
+            total === 12 ? '+9 vs showcase'
+                         : (total === 0 ? '— no packs in scope'
+                                        : 'filtered (' + total + ' of 12)'));
+  }
+
+  function recomputeJourneyRow(visibleCards) {
+    // Recompute journey-row scores: count visible cards per screen.
+    const byScreen = {};
+    visibleCards.forEach(c => {
+      const dom = c.dataset.domain;
+      if (!dom) return;
+      if (!byScreen[dom]) byScreen[dom] = { positive: 0, negative: 0 };
+      if (c.dataset.gt === 'negative') byScreen[dom].negative++;
+      else byScreen[dom].positive++;
+    });
+    document.querySelectorAll('.journey-cell').forEach(cell => {
+      const nameEl = cell.querySelector('.journey-cell-name');
+      if (!nameEl) return;
+      const dom = nameEl.textContent.trim().split(' ')[0];
+      const counts = byScreen[dom] || { positive: 0, negative: 0 };
+      const total = counts.positive + counts.negative;
+      const scoreEl = cell.querySelector('.journey-cell-score');
+      const submetaEl = cell.querySelector('.journey-cell-submeta');
+      if (scoreEl) scoreEl.textContent = counts.positive + '/3';
+      if (submetaEl) submetaEl.textContent =
+        total + ' cells · ' + counts.positive + ' positive · ' + counts.negative + ' negative';
+      cell.style.opacity = total === 0 ? '0.35' : '1';
+    });
+  }
+
+  function applyFilters() {
+    const visibleCards = [];
+    $cards.forEach(card => {
+      if (matches(card)) {
+        card.style.display = '';
+        visibleCards.push(card);
+      } else {
+        card.style.display = 'none';
+      }
+    });
+    recomputeCounts(visibleCards);
+    recomputeJourneyRow(visibleCards);
+
+    // toggle visual on dropdowns + reset btn
+    let anyActive = false;
+    $selects.forEach(sel => {
+      if (!sel) return;
+      if (sel.value) { sel.classList.add('filter-on'); anyActive = true; }
+      else sel.classList.remove('filter-on');
+    });
+    if ($resetBtn) {
+      if (anyActive) $resetBtn.classList.add('active');
+      else $resetBtn.classList.remove('active');
+    }
+
+    writeURLState();
+  }
+
+  function reset() {
+    $selects.forEach(sel => { if (sel) sel.value = ''; });
+    applyFilters();
+  }
+
+  // wire events
+  $selects.forEach(sel => sel && sel.addEventListener('change', applyFilters));
+  if ($resetBtn) $resetBtn.addEventListener('click', reset);
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') reset();
+  });
+
+  // on load: read URL state and apply
+  readURLState();
+  applyFilters();
+})();
+</script>
+"""
+
+
 def render_topnav(packs: list[dict]) -> str:
     """Global top nav — CJI Pulse brand + canvas-header dropdowns + utility cluster.
 
-    Dropdown labels mirror the Barclays Data Product Canvas header row
-    (Product / Owner / Domain / Date). Disabled placeholders — no filter wired.
+    HOL-10 phase 1: Product / Owner / Domain dropdowns are now functional —
+    they filter the briefing content via the JS in `render_filter_js()`. Date
+    is cosmetic (packs don't carry detection timestamps yet).
+
+    Search / Notifications / Canvas-guide / Settings still placeholders (subsequent
+    HOL-10 phases).
     """
     domains = sorted({(p["hypothesis"] or {}).get("screen_id", "").split(".")[0]
                        for p in packs if (p["hypothesis"] or {}).get("screen_id")})
     owners = sorted({a for p in packs for a in p["meta"].get("authors", [])})
+
+    product_opts = '<option value="">all packs · {n}</option>\n'.format(n=len(packs))
+    sorted_packs = sorted(packs, key=lambda p: (p["hypothesis"] or {}).get("cell_id", 99))
+    for p in sorted_packs:
+        h = p["hypothesis"] or {}
+        cell = h.get("cell_id", "?")
+        sig = h.get("signature_id", "—").replace("_", " ")
+        product_opts += (
+            f'<option value="{p["meta"]["pack_name"]}">'
+            f'cell {cell} · {sig}</option>\n'
+        )
+
+    owner_opts = f'<option value="">all teams · {len(owners)}</option>\n'
+    for o in owners:
+        owner_opts += f'<option value="{o}">{o}</option>\n'
+
+    domain_opts = f'<option value="">all journeys · {len(domains)}</option>\n'
+    for d in domains:
+        domain_opts += f'<option value="{d}">{d}</option>\n'
+
     return f'''
 <header class="app-topnav">
   <div class="topnav-brand">
@@ -1254,37 +1472,38 @@ def render_topnav(packs: list[dict]) -> str:
   <div class="topnav-controls">
     <div class="topnav-control-group">
       <span class="topnav-select-label">Product</span>
-      <select class="topnav-select" disabled>
-        <option>all packs · {len(packs)}</option>
+      <select class="topnav-select active" id="filter-product" data-filter="packname">
+        {product_opts}
       </select>
     </div>
     <div class="topnav-control-group">
       <span class="topnav-select-label">Owner</span>
-      <select class="topnav-select" disabled>
-        <option>{", ".join(owners) or "all teams"}</option>
+      <select class="topnav-select active" id="filter-owner" data-filter="author">
+        {owner_opts}
       </select>
     </div>
     <div class="topnav-control-group">
       <span class="topnav-select-label">Domain</span>
-      <select class="topnav-select" disabled>
-        <option>all journeys · {len(domains)}</option>
+      <select class="topnav-select active" id="filter-domain" data-filter="domain">
+        {domain_opts}
       </select>
     </div>
     <div class="topnav-control-group">
       <span class="topnav-select-label">Date</span>
-      <select class="topnav-select" disabled>
+      <select class="topnav-select" disabled title="Date filter — packs don't yet carry detection timestamps (HOL-10 phase later)">
         <option>last 7 days</option>
       </select>
     </div>
+    <button class="topnav-reset" id="filter-reset" type="button" title="Reset filters (Esc)">Reset</button>
   </div>
   <div class="topnav-utility">
-    <span class="topnav-icon" title="Search packs / journeys">⌕&nbsp;Search</span>
+    <span class="topnav-icon" title="Search packs / journeys (HOL-10 phase 2)">⌕&nbsp;Search</span>
     <span class="topnav-divider"></span>
-    <span class="topnav-icon" title="Notifications">
+    <span class="topnav-icon" title="Notifications (HOL-10 phase 3)">
       🔔<span class="topnav-icon-badge">3</span>
     </span>
-    <span class="topnav-icon" title="Help / Canvas guide">?</span>
-    <span class="topnav-icon" title="Settings">⚙</span>
+    <span class="topnav-icon" title="Help / Canvas guide (HOL-10 phase 3)">?</span>
+    <span class="topnav-icon" title="Settings (HOL-10 phase 3)">⚙</span>
     <span class="topnav-divider"></span>
     <span class="topnav-avatar" title="Hussain Ahmed">HA</span>
   </div>
@@ -1419,9 +1638,9 @@ def render_page(packs: list[dict]) -> str:
       <div class="sent-card-inner">
         <div class="sent-row-1">
           <span class="sent-card-label">CELL COVERAGE</span>
-          <span class="sent-card-score" style="margin-left:auto;">{len(packs)}/12</span>
-          <span class="sent-card-delta" style="color:var(--green);">+{len(packs)-3} vs showcase</span>
-          <span class="sent-card-traj" style="color:var(--green);">↗ COMPLETE</span>
+          <span class="sent-card-score" style="margin-left:auto;" data-count="coverage-score">{len(packs)}/12</span>
+          <span class="sent-card-delta" style="color:var(--green);" data-count="coverage-delta">+{len(packs)-3} vs showcase</span>
+          <span class="sent-card-traj" style="color:var(--green);" data-count="coverage-traj">↗ COMPLETE</span>
         </div>
         <div class="sent-row-2">
           <span class="sent-card-baseline">Baseline: 3 showcase packs</span>
@@ -1535,6 +1754,7 @@ def render_page(packs: list[dict]) -> str:
   <span class="footer-sep">·</span>
   <span class="footer-item">Generated {now}</span>
 </div>
+{FILTER_JS}
 </body>
 </html>
 '''
