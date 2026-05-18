@@ -597,6 +597,19 @@ html, body { background: var(--bg); color: var(--text); font-family: var(--sans)
   /* the dot's inline background sets currentColor for the shadow */
 }
 
+/* Prominent action callout — sits between KPI tiles and ancillary lines */
+.body-action {
+  background: var(--card-elev);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);  /* overridden inline per tier */
+  padding: 8px 12px;
+  font-size: 12px; color: var(--text);
+  line-height: 1.5;
+}
+
+/* Sparkline container — sits inside body, full-width SVG */
+.body-sparkline { display: block; }
+
 .body-table { width: 100%; border-collapse: collapse; font-size: 10px; }
 .body-table th { text-align: left; padding: 4px 6px; font-size: 9px;
                  color: var(--text-3); letter-spacing: 0.5px;
@@ -848,6 +861,38 @@ def body_lines(lines: list[tuple[str, str]]) -> str:
         f'<span>{text}</span>'
         f'</div>'
         for text, color in lines
+    )
+
+
+def body_action_line(text: str, color: str) -> str:
+    """Prominent action callout — full-width band, tier-coloured left rail."""
+    return (
+        f'<div class="body-action" style="border-left-color:{color};">'
+        f'<span>{text}</span>'
+        f'</div>'
+    )
+
+
+def sparkline_svg(values: list[float], color: str, width: int = 220, height: int = 36) -> str:
+    """Pure-SVG sparkline — no JS, no chart library, scales to the values given."""
+    if not values:
+        return ""
+    n = len(values)
+    vmin, vmax = min(values), max(values)
+    span = (vmax - vmin) or 1.0
+    step = width / max(n - 1, 1)
+    pts = " ".join(
+        f"{i*step:.1f},{height - ((v - vmin) / span) * height:.1f}"
+        for i, v in enumerate(values)
+    )
+    last_x = (n - 1) * step
+    last_y = height - ((values[-1] - vmin) / span) * height
+    return (
+        f'<svg class="body-sparkline" viewBox="0 0 {width} {height}" '
+        f'width="100%" height="{height}" preserveAspectRatio="none">'
+        f'<polyline points="{pts}" fill="none" stroke="{color}" stroke-width="1.5"/>'
+        f'<circle cx="{last_x:.1f}" cy="{last_y:.1f}" r="2.5" fill="{color}"/>'
+        f'</svg>'
     )
 
 
@@ -1168,10 +1213,12 @@ def render_box1(packs: list[dict]) -> str:
             color=tier_color,
             context=headline_context,
         ),
-        body=body_kpi_tiles(kpi_tiles) + body_lines([
+        body=body_kpi_tiles(kpi_tiles) + body_action_line(
+            f'<strong>ACTION:</strong> {recommendation}', tier_color
+        ) + body_lines([
             ("<strong>Confidence:</strong> 0.82 · Designed ceiling 0.85 · fairness attested",
              "var(--blue)"),
-            ("Selection drives this box · top nav → DuckDB churn (PULSE) → verdict object → render",
+            ("Selection drives this box · top nav → DuckDB churn (PULSE) → verdict object",
              "var(--text-3)"),
         ]),
         footer=box_footer(
@@ -1271,69 +1318,85 @@ def render_box2(packs: list[dict]) -> str:
 
 
 def render_box3(packs: list[dict]) -> str:
-    """Box 3 — INTELLIGENCE BRIEF. Headline pack + computed Action tier."""
+    """Box 3 — EVIDENCE (taste of data).
+
+    Headline KPI + 30-day trend sparkline + supporting stats. A "taste"
+    of the underlying evidence — full drill-down lives in V3 panels below.
+    Stub trend + counts now; engine returns the time-series + cohort cuts later.
+    """
     pack = headline_pack(packs)
     if not pack:
         return render_box(
-            header=box_header("INTELLIGENCE BRIEF", "—"),
-            headline=headline_tier_badge("NO PACKS", "var(--amber)", "Registry empty"),
+            header=box_header("EVIDENCE", "key data"),
+            headline=headline_tier_badge("—", "var(--text-3)", "No data for selection"),
             body=body_lines([("No packs loaded", "var(--amber)")]),
             footer=box_footer("—", NOW, live=False, note="—"),
         )
-    h = pack["hypothesis"] or {}
+
     meta = pack["meta"]
-    is_neg = h.get("ground_truth_expectation") == "negative"
-    cell = h.get("cell_id", "?")
-    sig = h.get("signature_id", "—").replace("_", " ")
-    screen = h.get("screen_id", "—")
-    # Engine output for this pack
+    h = pack["hypothesis"] or {}
     cell_score = get_pack_cell(meta["pack_name"])
-    if cell_score:
-        action_tier = cell_score.action_tier
-        action_color = _ACTION_COLORS.get(action_tier, "var(--amber)")
-        action_note = cell_score.placement_recommendation
+
+    # Stub 30-day affected-sessions series — engine returns the real trend
+    trend = [42, 48, 51, 47, 53, 61, 58, 67, 72, 78, 81, 88, 92, 99, 105,
+             112, 109, 118, 125, 132, 138, 145, 152, 161, 168, 175, 184, 191, 198, 207]
+    today_n     = trend[-1]
+    week_ago_n  = trend[-8]
+    delta_abs   = today_n - week_ago_n
+    delta_pct   = int(100 * delta_abs / week_ago_n) if week_ago_n else 0
+    total_30d   = sum(trend)
+    peak_day    = max(trend)
+
+    # Direction signal — climbing trend = friction worsening
+    delta_dir = "↗" if delta_abs > 0 else ("↘" if delta_abs < 0 else "→")
+    delta_color = "var(--red)" if delta_abs > 0 else "var(--green)"
+    spark_color = delta_color
+
+    # Cohort over-index — stub; engine returns real value via Value methodology
+    if cell_score and cell_score.value.adjustments_applied:
+        cohort_over = "2.4×" if "vulnerable_cohort_concentrated" in cell_score.value.adjustments_applied else "1.3×"
     else:
-        action_tier = "PENDING"
-        action_color = "var(--text-3)"
-        action_note = "Action tier requires PULSE-106 placement scenario"
-    tier_text = f"CELL {cell} · {'NEGATIVE' if is_neg else 'POSITIVE'}"
-    tier_color = "var(--amber)" if is_neg else "var(--red)"
+        cohort_over = "—"
+
     return render_box(
-        header=box_header("INTELLIGENCE BRIEF", "headline pack"),
-        accent_color=tier_color,
-        headline=headline_tier_badge(
-            tier=tier_text,
-            color=tier_color,
-            context=(
-                f"<strong>{sig}</strong> on {screen} · "
-                f"{'detector MUST NOT fire · discriminator load-bearing' if is_neg else 'detector active · positive ground truth'}"
-            ),
+        header=box_header("EVIDENCE", "key data · 30-day trend"),
+        accent_color=delta_color,
+        headline=headline_stat_card(
+            label="AFFECTED SESSIONS · TODAY",
+            value=f"{today_n}",
+            delta=f"{delta_dir} {delta_abs:+d} vs 7d ago ({delta_pct:+d}%)",
+            traj=f"{delta_dir} CLIMBING" if delta_abs > 0 else f"{delta_dir} EASING",
+            meta_left=f"30-day total: {total_30d:,}",
+            meta_right=NOW,
+            progress_pct=int(100 * today_n / peak_day) if peak_day else 0,
         ),
-        body=body_kpi_tiles([
-            (f"CELL {cell}", "FrictionBench",   "v0.1 · frozen",
-             "var(--blue)"),
-            ("NEGATIVE" if is_neg else "POSITIVE",
-             "Ground truth",
-             "discriminator active" if is_neg else "detector active",
-             "var(--amber)" if is_neg else "var(--teal)"),
-            ((h.get("analytic") or {}).get("method", "—").split("_")[0],
-             "Method family",
-             (h.get("analytic") or {}).get("method", "—")[:32],
-             "var(--text-2)"),
-        ]) + body_evidence_cards([
-            (
-                (meta.get("description", "").strip().replace("\n", " "))[:400]
-                or "No description in pack metadata",
-                f"The Situation · pack: {meta['pack_name']}",
-            ),
-            (
-                _extract_quote(pack) or "Bank altitude not available",
-                f"Bank altitude · cell {cell} · sha256:{short_hash(pack['sha256'])}",
-            ),
-        ]),
+        body=(
+            f'<div style="padding:4px 0 2px; font-size:9px; color:var(--text-3); '
+            f'letter-spacing:1.4px; text-transform:uppercase;">30-day trend</div>'
+            + sparkline_svg(trend, spark_color)
+            + body_kpi_tiles([
+                (str(peak_day),
+                 "PEAK DAY",
+                 "highest in 30d window",
+                 "var(--amber)"),
+                (cohort_over,
+                 "COHORT OVER-INDEX",
+                 "vulnerable vs baseline",
+                 "var(--amber)" if cohort_over != "—" else "var(--text-3)"),
+                (f"{total_30d:,}",
+                 "30-DAY TOTAL",
+                 "cumulative affected sessions",
+                 "var(--blue)"),
+            ])
+            + body_lines([
+                ("<strong>What this tells us:</strong> climbing trend — friction "
+                 "compounding week-over-week; drill V3 for cohort cuts & journey replay",
+                 "var(--text-2)"),
+            ])
+        ),
         footer=box_footer(
-            "engine v0.1.0", NOW, live=True,
-            note=f"Action: {action_tier} · {action_note[:80]}",
+            "evidence v0.1", NOW, live=True,
+            note=f"sha256:{short_hash(pack['sha256'])} · DuckDB time-series (stub) · drill V3 for full evidence",
         ),
     )
 
