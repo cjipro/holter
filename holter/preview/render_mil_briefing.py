@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import datetime as _dt
 import hashlib
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +45,13 @@ REPO = Path(__file__).resolve().parents[2]
 PACKS_DIR = REPO / "pulse" / "decision_packs"
 JOURNEY_TAXONOMY = REPO / "pulse" / "contracts" / "journey_taxonomy.yaml"
 OUT_DIR = REPO / "dist" / "preview"
+
+# Make `pulse.*` importable when this script is run directly
+# (mirrors the same setup in serve_briefing.py). Pre-HOL-11 the
+# renderer only needed file-path access to pulse/decision_packs/;
+# HOL-11 added engine-module imports for the placement matrix.
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
 
 
 def load_journey_taxonomy() -> dict[str, str]:
@@ -1882,6 +1890,172 @@ def render_sidebar(packs: list[dict]) -> str:
 '''
 
 
+_DIAGNOSIS_COLORS = {
+    "SUPPORT_PROBLEM": "var(--green)",     # AI deployment is the right intervention
+    "JOURNEY_PROBLEM": "var(--amber)",     # fix the journey itself
+    "BOTH": "var(--blue)",                 # combination
+    "INCONCLUSIVE": "#7A7A7A",             # insufficient control-arm data
+}
+
+_ACTION_COLORS = {
+    "ACUTE": "var(--red)",                 # high value × high risk — guardrails
+    "REGULATORY-FLAG": "var(--amber)",     # high risk × low value — don't deploy
+    "COMMERCIAL-OPPORTUNITY": "var(--green)",  # high value × low risk — deploy first
+    "WATCH": "var(--teal)",                # mid both
+    "NOMINAL": "#5A6E7A",                  # low both
+    "NEEDS_MORE_DATA": "#7A7A7A",          # diagnosis override
+}
+
+
+def render_placement_matrix(packs: list[dict]) -> str:
+    """V3 — Agentic AI placement matrix (PULSE-106 worked example).
+
+    Runs the full v0 engine spine (Diagnosis → Risk → Value → Action tier)
+    against the scenario.yaml fixtures and renders the placement matrix as a
+    briefing block. Fails closed with a banner if PULSE-106 is unavailable
+    so the rest of the briefing still renders.
+
+    Filed under HOL-11.
+    """
+    try:
+        from pulse.scenarios.agentic_ai_placement import run_placement_scenario
+        matrix = run_placement_scenario()
+    except Exception as e:  # pragma: no cover — diagnostic fallback
+        return f'''
+<div class="topbar-box">
+  <div class="topbar-box-header">
+    <span class="topbar-box-title">AGENTIC AI PLACEMENT MATRIX</span>
+    <span style="font-size:10px;color:var(--amber);">PULSE-106 unavailable</span>
+  </div>
+  <div class="topbar-box-body">
+    <div style="padding:14px;color:var(--amber);font-size:12px;">
+      Worked-example scenario could not be loaded: {str(e)[:200]}
+      <br/><br/>
+      The placement matrix renders here when
+      <code>pulse.scenarios.agentic_ai_placement</code> is importable. Run
+      <code>py -m pulse.scenarios.agentic_ai_placement.run</code> to see the
+      Markdown form independently.
+    </div>
+  </div>
+</div>'''
+
+    # 2x2 aggregate counts (Risk × Value bands)
+    high_value = {"SIGNIFICANT", "COMMERCIAL-OPPORTUNITY"}
+    high_risk = {"ESCALATE", "REGULATORY-FLAG"}
+
+    n_acute = sum(
+        1 for c in matrix.cells
+        if c.value.tier in high_value and c.risk.tier in high_risk
+        and c.diagnosis.diagnosis != "INCONCLUSIVE"
+    )
+    n_regflag = sum(
+        1 for c in matrix.cells
+        if c.value.tier not in high_value and c.risk.tier in high_risk
+        and c.diagnosis.diagnosis != "INCONCLUSIVE"
+    )
+    n_commercial = sum(
+        1 for c in matrix.cells
+        if c.value.tier in high_value and c.risk.tier not in high_risk
+        and c.diagnosis.diagnosis != "INCONCLUSIVE"
+    )
+    n_nominal_watch = sum(
+        1 for c in matrix.cells
+        if c.value.tier not in high_value and c.risk.tier not in high_risk
+        and c.diagnosis.diagnosis != "INCONCLUSIVE"
+    )
+    n_inconclusive = sum(
+        1 for c in matrix.cells if c.diagnosis.diagnosis == "INCONCLUSIVE"
+    )
+
+    # Per-cell row list
+    rows_html = ""
+    for c in matrix.cells:
+        d_color = _DIAGNOSIS_COLORS.get(c.diagnosis.diagnosis, "#7A7A7A")
+        a_color = _ACTION_COLORS.get(c.action_tier, "#7A7A7A")
+        hash_short = c.risk.inputs_hash[:7]
+        rows_html += f'''
+<tr>
+  <td style="padding:6px 10px;font-family:'DM Mono',monospace;font-size:10px;color:#7AACBF;">{c.journey_id}</td>
+  <td style="padding:6px 10px;font-family:'DM Mono',monospace;font-size:10px;color:#7AACBF;">{c.signature_id.replace("_", " ")}</td>
+  <td style="padding:6px 8px;"><span style="display:inline-block;padding:3px 8px;font-size:9px;font-weight:700;letter-spacing:0.5px;background:#001828;color:{d_color};border:1px solid {d_color};border-radius:2px;">{c.diagnosis.diagnosis}</span></td>
+  <td style="padding:6px 8px;text-align:center;font-size:10px;color:#7AACBF;">{c.risk.tier}</td>
+  <td style="padding:6px 8px;text-align:center;font-size:10px;color:#7AACBF;">{c.value.tier}</td>
+  <td style="padding:6px 8px;"><span style="display:inline-block;padding:3px 8px;font-size:9px;font-weight:700;letter-spacing:0.5px;background:{a_color};color:#001828;border-radius:2px;">{c.action_tier}</span></td>
+  <td style="padding:6px 10px;font-size:11px;color:#A8CDDE;">{c.placement_recommendation}</td>
+  <td style="padding:6px 10px;font-family:'DM Mono',monospace;font-size:9px;color:#3A6A7F;">{hash_short}</td>
+</tr>'''
+
+    return f'''
+<div class="topbar-box">
+  <div class="topbar-box-header">
+    <span class="topbar-box-title">AGENTIC AI PLACEMENT MATRIX</span>
+    <span style="font-size:10px;color:#3A6A7F;">
+      Pulse v0 engine spine · Diagnosis → Risk → Value → CLARK-style Action tier · {len(matrix.cells)} cells
+    </span>
+  </div>
+  <div class="topbar-box-body">
+    <!-- 2x2 aggregate -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">
+      <div style="border:1px solid var(--border);border-top:3px solid var(--red);padding:10px;background:#001020;">
+        <div style="font-size:9px;color:#7AACBF;letter-spacing:0.5px;text-transform:uppercase;">High Risk · High Value</div>
+        <div style="font-size:28px;font-weight:700;color:var(--red);margin:4px 0;">{n_acute}</div>
+        <div style="font-size:10px;color:#A8CDDE;font-weight:600;">ACUTE</div>
+        <div style="font-size:9px;color:#5A7E92;">Deploy AI with heavy guardrails</div>
+      </div>
+      <div style="border:1px solid var(--border);border-top:3px solid var(--amber);padding:10px;background:#001020;">
+        <div style="font-size:9px;color:#7AACBF;letter-spacing:0.5px;text-transform:uppercase;">High Risk · Low Value</div>
+        <div style="font-size:28px;font-weight:700;color:var(--amber);margin:4px 0;">{n_regflag}</div>
+        <div style="font-size:10px;color:#A8CDDE;font-weight:600;">REGULATORY-FLAG</div>
+        <div style="font-size:9px;color:#5A7E92;">Don't deploy AI here</div>
+      </div>
+      <div style="border:1px solid var(--border);border-top:3px solid var(--green);padding:10px;background:#001020;">
+        <div style="font-size:9px;color:#7AACBF;letter-spacing:0.5px;text-transform:uppercase;">Low Risk · High Value</div>
+        <div style="font-size:28px;font-weight:700;color:var(--green);margin:4px 0;">{n_commercial}</div>
+        <div style="font-size:10px;color:#A8CDDE;font-weight:600;">COMMERCIAL-OPPORTUNITY</div>
+        <div style="font-size:9px;color:#5A7E92;">Deploy AI here first</div>
+      </div>
+      <div style="border:1px solid var(--border);border-top:3px solid #5A6E7A;padding:10px;background:#001020;">
+        <div style="font-size:9px;color:#7AACBF;letter-spacing:0.5px;text-transform:uppercase;">Low Risk · Low Value</div>
+        <div style="font-size:28px;font-weight:700;color:#A8CDDE;margin:4px 0;">{n_nominal_watch}</div>
+        <div style="font-size:10px;color:#A8CDDE;font-weight:600;">NOMINAL / WATCH</div>
+        <div style="font-size:9px;color:#5A7E92;">Not worth deploying</div>
+      </div>
+    </div>
+    <div style="font-size:11px;color:#5A7E92;margin-bottom:10px;">
+      <span style="display:inline-block;width:8px;height:8px;background:#7A7A7A;border-radius:50%;margin-right:4px;vertical-align:middle;"></span>
+      {n_inconclusive} cells diagnosed INCONCLUSIVE — control-arm data too thin to call (Diagnosis overrides the 2x2)
+    </div>
+
+    <!-- Per-cell row table -->
+    <table style="width:100%;border-collapse:collapse;font-size:11px;">
+      <thead>
+        <tr style="border-bottom:1px solid var(--border);">
+          <th style="padding:6px 10px;text-align:left;font-size:9px;color:#3A6A7F;letter-spacing:0.5px;">JOURNEY</th>
+          <th style="padding:6px 10px;text-align:left;font-size:9px;color:#3A6A7F;letter-spacing:0.5px;">SIGNATURE</th>
+          <th style="padding:6px 8px;text-align:left;font-size:9px;color:#3A6A7F;letter-spacing:0.5px;">DIAGNOSIS</th>
+          <th style="padding:6px 8px;text-align:center;font-size:9px;color:#3A6A7F;letter-spacing:0.5px;">RISK</th>
+          <th style="padding:6px 8px;text-align:center;font-size:9px;color:#3A6A7F;letter-spacing:0.5px;">VALUE</th>
+          <th style="padding:6px 8px;text-align:left;font-size:9px;color:#3A6A7F;letter-spacing:0.5px;">ACTION</th>
+          <th style="padding:6px 10px;text-align:left;font-size:9px;color:#3A6A7F;letter-spacing:0.5px;">PLACEMENT</th>
+          <th style="padding:6px 10px;text-align:left;font-size:9px;color:#3A6A7F;letter-spacing:0.5px;">HASH</th>
+        </tr>
+      </thead>
+      <tbody>{rows_html}</tbody>
+    </table>
+
+    <!-- Lineage footer -->
+    <div style="margin-top:14px;padding-top:10px;border-top:1px solid var(--border);font-size:10px;color:#5A7E92;">
+      <span style="color:#7AACBF;">LINEAGE:</span>
+      Diagnosis v{matrix.diagnosis_methodology_version}
+      · Risk v{matrix.risk_methodology_version}
+      · Value v{matrix.value_methodology_version}
+      · deployment <span style="font-family:'DM Mono',monospace;color:#7AACBF;">{matrix.deployment_id}</span>
+      · per-cell inputs_hash above (first 7 chars; full SHA-256 in audit bundle)
+    </div>
+  </div>
+</div>'''
+
+
 def render_clark_protocol(packs: list[dict]) -> str:
     n_positive = sum(1 for p in packs if (p["hypothesis"] or {}).get("ground_truth_expectation") != "negative")
     n_negative = sum(1 for p in packs if (p["hypothesis"] or {}).get("ground_truth_expectation") == "negative")
@@ -2015,6 +2189,7 @@ def render_page(packs: list[dict]) -> str:
     Pulse Intelligence Layer &nbsp;·&nbsp; {now}
   </div>
   {render_churn_block(packs)}
+  {render_placement_matrix(packs)}
   {render_commentary_block(packs)}
   {render_bench_block(packs)}
   {render_clark_protocol(packs)}
