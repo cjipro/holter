@@ -1,8 +1,27 @@
-"""Pulse Risk methodology — Chronicle precedent library + Risk tier scoring.
+"""Pulse Risk methodology — computed Risk tier + Chronicle precedent library.
 
-Currently houses:
-- chronicle/ — curated friction-pattern enforcement library (PULSE-100)
+- score.py (PULSE-99) — score_risk() function, regulatory_taxonomy.yaml,
+  rubric.yaml, methodology_version pinned in every output
+- chronicle/ (PULSE-100) — curated friction-pattern enforcement registry
+  consumed by score_risk()
 
-Pending tickets:
-- PULSE-99 — Risk methodology v0 (consumes Chronicle + bank_policy.yaml)
+Filed under PULSE-99 + PULSE-100.
 """
+
+from pulse.risk.score import (
+    FrictionShape,
+    ImpactMetrics,
+    RiskScore,
+    load_rubric,
+    load_taxonomy,
+    score_risk,
+)
+
+__all__ = [
+    "FrictionShape",
+    "ImpactMetrics",
+    "RiskScore",
+    "load_rubric",
+    "load_taxonomy",
+    "score_risk",
+]
