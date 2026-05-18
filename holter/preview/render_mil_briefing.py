@@ -1556,11 +1556,11 @@ def render_churn_block(packs: list[dict]) -> str:
     discriminators = sum(1 for p in packs if (p["hypothesis"] or {}).get("negative_class_discriminator"))
     score = f"{risk * 6.5:.1f}"
     pos_pills = "".join(
-        f'<span class="churn-issue-pill">{(p["hypothesis"] or {}).get("signature_id","—").replace("_"," ")} · cell {(p["hypothesis"] or {}).get("cell_id","?")}</span>'
+        f'<span class="churn-issue-pill" data-packname="{p["meta"]["pack_name"]}" data-pill-class="positive">{(p["hypothesis"] or {}).get("signature_id","—").replace("_"," ")} · cell {(p["hypothesis"] or {}).get("cell_id","?")}</span>'
         for p in packs if (p["hypothesis"] or {}).get("ground_truth_expectation") != "negative"
     )
     neg_pills = "".join(
-        f'<span class="churn-issue-pill strength">{(p["hypothesis"] or {}).get("signature_id","—").replace("_"," ")} · cell {(p["hypothesis"] or {}).get("cell_id","?")} · discriminator</span>'
+        f'<span class="churn-issue-pill strength" data-packname="{p["meta"]["pack_name"]}" data-pill-class="discriminator">{(p["hypothesis"] or {}).get("signature_id","—").replace("_"," ")} · cell {(p["hypothesis"] or {}).get("cell_id","?")} · discriminator</span>'
         for p in packs if (p["hypothesis"] or {}).get("ground_truth_expectation") == "negative"
     )
     return f'''
@@ -1572,13 +1572,13 @@ def render_churn_block(packs: list[dict]) -> str:
   <div class="topbar-box-body">
     <div class="churn-header">
       <div class="churn-score-block">
-        <div class="churn-score-num" style="color:var(--amber);">{score}</div>
+        <div class="churn-score-num" style="color:var(--amber);" data-aggregate="churn-score">{score}</div>
         <div class="churn-score-lbl">Cell Risk Score</div>
       </div>
       <div class="churn-trend-block">
-        <span class="churn-trend-badge" style="background:#002030;color:#7AACBF;border:1px solid #3A6A7F;">12-CELL COVERAGE</span>
+        <span class="churn-trend-badge" style="background:#002030;color:#7AACBF;border:1px solid #3A6A7F;" data-aggregate="churn-coverage">12-CELL COVERAGE</span>
         <div class="churn-meta">
-          {risk} positive detector cells · {discriminators} negative-class discriminator cells
+          <span data-aggregate="churn-positive-count">{risk}</span> positive detector cells · <span data-aggregate="churn-discriminator-count">{discriminators}</span> negative-class discriminator cells
         </div>
       </div>
     </div>
@@ -1614,7 +1614,7 @@ def render_commentary_block(packs: list[dict]) -> str:
         badge_cls = "negative" if is_neg else "risk"
         badge_text = "NEGATIVE · LOAD-BEARING" if is_neg else "POSITIVE · DETECTOR ACTIVE"
         cards_html += f'''
-<div class="commentary-card {cls}">
+<div class="commentary-card {cls}" data-packname="{p['meta']['pack_name']}">
   <div class="commentary-card-header">
     <span class="commentary-issue">Cell {cell} · {sig.title()}</span>
     <span class="commentary-badge {badge_cls}">{badge_text}</span>
@@ -1660,7 +1660,7 @@ def render_bench_block(packs: list[dict]) -> str:
         density = min((cohort_n + evidence_n) * 6, 100)
         bar_color = "var(--amber)" if is_neg else "var(--blue)"
         rows += f'''
-<tr class="bench-issue-row">
+<tr class="bench-issue-row" data-packname="{p['meta']['pack_name']}">
   <td class="bench-issue-name"><span style="color:{'#F5A623' if is_neg else '#CC0000'};font-size:8px;margin-right:2px;">●</span>Cell {cell} · {sig.title()}</td>
   <td class="bench-bar-cell">
     <div style="margin-bottom:3px;">
@@ -2064,6 +2064,104 @@ FILTER_JS = """
     });
   }
 
+  /* HOL-10 phase 4 — V3-layer recompute.
+   * Visible pack-name set drives:
+   *  - show/hide per-pack rows in commentary cards, bench rows,
+   *    Value/Risk scoring rows, placement matrix rows, churn pills
+   *  - aggregates: friction risk score, clark-protocol tiles,
+   *    placement matrix 2x2, Value/Risk tier-count chips
+   */
+  function recomputeV3(visibleCards) {
+    const visibleNames = new Set(visibleCards.map(c => c.dataset.packname));
+
+    // 1. Show/hide every per-pack V3 element (excluding pack-cards
+    //    themselves; those are owned by applyFilters above).
+    document.querySelectorAll('[data-packname]').forEach(el => {
+      if (el.classList.contains('pack-card')) return;
+      const visible = visibleNames.has(el.dataset.packname);
+      el.style.display = visible ? '' : 'none';
+    });
+
+    // 2. Friction risk score: count visible positive pills + score.
+    const visiblePills = document.querySelectorAll('.churn-issue-pill[data-pill-class]:not([style*="display: none"])');
+    let posCount = 0, discCount = 0;
+    visiblePills.forEach(p => {
+      if (p.dataset.pillClass === 'positive') posCount++;
+      else if (p.dataset.pillClass === 'discriminator') discCount++;
+    });
+    const elScore = document.querySelector('[data-aggregate="churn-score"]');
+    if (elScore) elScore.textContent = (posCount * 6.5).toFixed(1);
+    const elPos = document.querySelector('[data-aggregate="churn-positive-count"]');
+    if (elPos) elPos.textContent = posCount;
+    const elDisc = document.querySelector('[data-aggregate="churn-discriminator-count"]');
+    if (elDisc) elDisc.textContent = discCount;
+
+    // 3. Clark protocol tiles — counts derived from visible pack cards.
+    let clarkPos = 0, clarkNeg = 0;
+    visibleCards.forEach(c => {
+      if (c.dataset.gt === 'negative') clarkNeg++;
+      else clarkPos++;
+    });
+    const elClarkPos = document.querySelector('[data-aggregate="clark-positive"]');
+    if (elClarkPos) elClarkPos.textContent = clarkPos;
+    const elClarkNeg = document.querySelector('[data-aggregate="clark-negative"]');
+    if (elClarkNeg) elClarkNeg.textContent = clarkNeg;
+    const elClarkTotal = document.querySelector('[data-aggregate="clark-total"]');
+    if (elClarkTotal) elClarkTotal.textContent = visibleCards.length;
+
+    // 4. Placement matrix 2x2 aggregates — count visible rows by
+    //    (action-tier × non-INCONCLUSIVE) / INCONCLUSIVE.
+    const highValue = new Set(['SIGNIFICANT', 'COMMERCIAL-OPPORTUNITY']);
+    const highRisk  = new Set(['ESCALATE', 'REGULATORY-FLAG']);
+    let nAcute = 0, nRegFlag = 0, nCommercial = 0, nNominalWatch = 0, nIncon = 0;
+    document.querySelectorAll('[data-panel-id="placement-matrix"] tbody tr[data-action-tier]').forEach(row => {
+      if (row.style.display === 'none') return;
+      const diag = row.dataset.diagnosis;
+      if (diag === 'INCONCLUSIVE') { nIncon++; return; }
+      // Re-derive risk and value from the displayed text. Simpler: use
+      // the action tier directly since it's the composed signal.
+      const act = row.dataset.actionTier;
+      if (act === 'ACUTE') nAcute++;
+      else if (act === 'REGULATORY-FLAG') nRegFlag++;
+      else if (act === 'COMMERCIAL-OPPORTUNITY') nCommercial++;
+      else nNominalWatch++;
+    });
+    [
+      ['action-acute', nAcute],
+      ['action-regflag', nRegFlag],
+      ['action-commercial', nCommercial],
+      ['action-nominal-watch', nNominalWatch],
+      ['action-inconclusive', nIncon],
+    ].forEach(([key, val]) => {
+      const el = document.querySelector(`[data-aggregate="${key}"]`);
+      if (el) el.textContent = val;
+    });
+
+    // 5. Value / Risk tier-count chips — recompute from visible rows.
+    recomputeTierChips('value-scoring', 'data-value-tier', 'value');
+    recomputeTierChips('risk-scoring',  'data-risk-tier',  'risk');
+  }
+
+  function recomputeTierChips(panelId, rowAttr, chipPrefix) {
+    const tierCounts = {};
+    document.querySelectorAll(
+      `[data-panel-id="${panelId}"] tbody tr[${rowAttr}]`
+    ).forEach(row => {
+      if (row.style.display === 'none') return;
+      const t = row.getAttribute(rowAttr);
+      tierCounts[t] = (tierCounts[t] || 0) + 1;
+    });
+    document.querySelectorAll(
+      `[data-tier-chip^="${chipPrefix}:"]`
+    ).forEach(chip => {
+      const tier = chip.dataset.tierChip.split(':')[1];
+      const count = tierCounts[tier] || 0;
+      const countEl = chip.querySelector('[data-tier-count]');
+      if (countEl) countEl.textContent = count;
+      chip.style.display = count === 0 ? 'none' : 'inline-block';
+    });
+  }
+
   function applyFilters() {
     const visibleCards = [];
     $cards.forEach(card => {
@@ -2076,6 +2174,7 @@ FILTER_JS = """
     });
     recomputeCounts(visibleCards);
     recomputeJourneyRow(visibleCards);
+    recomputeV3(visibleCards);
 
     // toggle visual on dropdowns + reset btn
     let anyActive = false;
@@ -2649,14 +2748,17 @@ def render_placement_matrix(packs: list[dict]) -> str:
         1 for c in matrix.cells if c.diagnosis.diagnosis == "INCONCLUSIVE"
     )
 
-    # Per-cell row list
+    # Per-cell row list. pack_name is reconstructed as "<journey>__<signature>"
+    # to match the seed pack directory naming convention; rows are filterable
+    # via data-packname when the topnav filters fire (HOL-10 phase 4).
     rows_html = ""
     for c in matrix.cells:
         d_color = _DIAGNOSIS_COLORS.get(c.diagnosis.diagnosis, "#7A7A7A")
         a_color = _ACTION_COLORS.get(c.action_tier, "#7A7A7A")
         hash_short = c.risk.inputs_hash[:7]
+        pack_name = f"{c.journey_id}__{c.signature_id}"
         rows_html += f'''
-<tr>
+<tr data-packname="{pack_name}" data-action-tier="{c.action_tier}" data-diagnosis="{c.diagnosis.diagnosis}">
   <td style="padding:6px 10px;font-family:'DM Mono',monospace;font-size:10px;color:#7AACBF;">{c.journey_id}</td>
   <td style="padding:6px 10px;font-family:'DM Mono',monospace;font-size:10px;color:#7AACBF;">{c.signature_id.replace("_", " ")}</td>
   <td style="padding:6px 8px;"><span style="display:inline-block;padding:3px 8px;font-size:9px;font-weight:700;letter-spacing:0.5px;background:#001828;color:{d_color};border:1px solid {d_color};border-radius:2px;">{c.diagnosis.diagnosis}</span></td>
@@ -2680,32 +2782,32 @@ def render_placement_matrix(packs: list[dict]) -> str:
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">
       <div style="border:1px solid var(--border);border-top:3px solid var(--red);padding:10px;background:#001020;">
         <div style="font-size:9px;color:#7AACBF;letter-spacing:0.5px;text-transform:uppercase;">High Risk · High Value</div>
-        <div style="font-size:28px;font-weight:700;color:var(--red);margin:4px 0;">{n_acute}</div>
+        <div style="font-size:28px;font-weight:700;color:var(--red);margin:4px 0;" data-aggregate="action-acute">{n_acute}</div>
         <div style="font-size:10px;color:#A8CDDE;font-weight:600;">ACUTE</div>
         <div style="font-size:9px;color:#5A7E92;">Deploy AI with heavy guardrails</div>
       </div>
       <div style="border:1px solid var(--border);border-top:3px solid var(--amber);padding:10px;background:#001020;">
         <div style="font-size:9px;color:#7AACBF;letter-spacing:0.5px;text-transform:uppercase;">High Risk · Low Value</div>
-        <div style="font-size:28px;font-weight:700;color:var(--amber);margin:4px 0;">{n_regflag}</div>
+        <div style="font-size:28px;font-weight:700;color:var(--amber);margin:4px 0;" data-aggregate="action-regflag">{n_regflag}</div>
         <div style="font-size:10px;color:#A8CDDE;font-weight:600;">REGULATORY-FLAG</div>
         <div style="font-size:9px;color:#5A7E92;">Don't deploy AI here</div>
       </div>
       <div style="border:1px solid var(--border);border-top:3px solid var(--green);padding:10px;background:#001020;">
         <div style="font-size:9px;color:#7AACBF;letter-spacing:0.5px;text-transform:uppercase;">Low Risk · High Value</div>
-        <div style="font-size:28px;font-weight:700;color:var(--green);margin:4px 0;">{n_commercial}</div>
+        <div style="font-size:28px;font-weight:700;color:var(--green);margin:4px 0;" data-aggregate="action-commercial">{n_commercial}</div>
         <div style="font-size:10px;color:#A8CDDE;font-weight:600;">COMMERCIAL-OPPORTUNITY</div>
         <div style="font-size:9px;color:#5A7E92;">Deploy AI here first</div>
       </div>
       <div style="border:1px solid var(--border);border-top:3px solid #5A6E7A;padding:10px;background:#001020;">
         <div style="font-size:9px;color:#7AACBF;letter-spacing:0.5px;text-transform:uppercase;">Low Risk · Low Value</div>
-        <div style="font-size:28px;font-weight:700;color:#A8CDDE;margin:4px 0;">{n_nominal_watch}</div>
+        <div style="font-size:28px;font-weight:700;color:#A8CDDE;margin:4px 0;" data-aggregate="action-nominal-watch">{n_nominal_watch}</div>
         <div style="font-size:10px;color:#A8CDDE;font-weight:600;">NOMINAL / WATCH</div>
         <div style="font-size:9px;color:#5A7E92;">Not worth deploying</div>
       </div>
     </div>
     <div style="font-size:11px;color:#5A7E92;margin-bottom:10px;">
       <span style="display:inline-block;width:8px;height:8px;background:#7A7A7A;border-radius:50%;margin-right:4px;vertical-align:middle;"></span>
-      {n_inconclusive} cells diagnosed INCONCLUSIVE — control-arm data too thin to call (Diagnosis overrides the 2x2)
+      <span data-aggregate="action-inconclusive">{n_inconclusive}</span> cells diagnosed INCONCLUSIVE — control-arm data too thin to call (Diagnosis overrides the 2x2)
     </div>
 
     <!-- Per-cell row table -->
@@ -2762,7 +2864,7 @@ def render_value_scoring_panel(packs: list[dict]) -> str:
         ) or "—"
         h = p["hypothesis"] or {}
         rows_html += f'''
-<tr>
+<tr data-packname="{p["meta"]["pack_name"]}" data-value-tier="{v.tier}">
   <td style="padding:5px 8px;font-size:10px;color:#7AACBF;font-family:'DM Mono',monospace;">cell {h.get("cell_id", "?")}</td>
   <td style="padding:5px 8px;font-size:10px;color:#A8CDDE;">{p["meta"]["pack_name"]}</td>
   <td style="padding:5px 8px;">{_tier_badge_html("VALUE", v.tier, _VALUE_COLORS)}</td>
@@ -2776,10 +2878,10 @@ def render_value_scoring_panel(packs: list[dict]) -> str:
         )
 
     counts_html = "".join(
-        f'<span style="display:inline-block;margin-right:14px;font-size:11px;">'
+        f'<span data-tier-chip="value:{t}" style="display:inline-block;margin-right:14px;font-size:11px;">'
         f'<span style="display:inline-block;width:8px;height:8px;background:{_VALUE_COLORS[t]};vertical-align:middle;margin-right:4px;border-radius:1px;"></span>'
         f'<span style="color:#A8CDDE;">{t}</span> '
-        f'<span style="color:#7AACBF;font-weight:700;">{c}</span></span>'
+        f'<span style="color:#7AACBF;font-weight:700;" data-tier-count>{c}</span></span>'
         for t, c in sorted(tier_counts.items())
     )
 
@@ -2792,7 +2894,7 @@ def render_value_scoring_panel(packs: list[dict]) -> str:
     </span>
   </div>
   <div class="topbar-box-body">
-    <div style="padding-bottom:10px;">{counts_html}</div>
+    <div style="padding-bottom:10px;" data-tier-counts-band>{counts_html}</div>
     <table style="width:100%;border-collapse:collapse;font-size:11px;">
       <thead>
         <tr style="border-bottom:1px solid var(--border);">
@@ -2839,7 +2941,7 @@ def render_risk_scoring_panel(packs: list[dict]) -> str:
         )
         h = p["hypothesis"] or {}
         rows_html += f'''
-<tr>
+<tr data-packname="{p["meta"]["pack_name"]}" data-risk-tier="{r.tier}">
   <td style="padding:5px 8px;font-size:10px;color:#7AACBF;font-family:'DM Mono',monospace;">cell {h.get("cell_id", "?")}</td>
   <td style="padding:5px 8px;">{_tier_badge_html("RISK", r.tier, _RISK_COLORS)}</td>
   <td style="padding:5px 8px;font-size:10px;color:#A8CDDE;">{regs}</td>
@@ -2854,10 +2956,10 @@ def render_risk_scoring_panel(packs: list[dict]) -> str:
         )
 
     counts_html = "".join(
-        f'<span style="display:inline-block;margin-right:14px;font-size:11px;">'
+        f'<span data-tier-chip="risk:{t}" style="display:inline-block;margin-right:14px;font-size:11px;">'
         f'<span style="display:inline-block;width:8px;height:8px;background:{_RISK_COLORS[t]};vertical-align:middle;margin-right:4px;border-radius:1px;"></span>'
         f'<span style="color:#A8CDDE;">{t}</span> '
-        f'<span style="color:#7AACBF;font-weight:700;">{c}</span></span>'
+        f'<span style="color:#7AACBF;font-weight:700;" data-tier-count>{c}</span></span>'
         for t, c in sorted(tier_counts.items())
     )
 
@@ -2870,7 +2972,7 @@ def render_risk_scoring_panel(packs: list[dict]) -> str:
     </span>
   </div>
   <div class="topbar-box-body">
-    <div style="padding-bottom:10px;">{counts_html}</div>
+    <div style="padding-bottom:10px;" data-tier-counts-band>{counts_html}</div>
     <table style="width:100%;border-collapse:collapse;font-size:11px;">
       <thead>
         <tr style="border-bottom:1px solid var(--border);">
@@ -2916,22 +3018,22 @@ def render_clark_protocol(packs: list[dict]) -> str:
   <div class="topbar-box-body">
     <div class="clark-strip">
       <div class="clark-tile" style="border-top-color:#CC3333;">
-        <div class="clark-count" style="color:#CC3333;">0</div>
+        <div class="clark-count" style="color:#CC3333;" data-aggregate="clark-calibration-fail">0</div>
         <div class="clark-tier">PULSE-3</div>
         <div class="clark-label">CALIBRATION FAIL</div>
       </div>
       <div class="clark-tile" style="border-top-color:var(--amber);">
-        <div class="clark-count" style="color:var(--amber);">{n_negative}</div>
+        <div class="clark-count" style="color:var(--amber);" data-aggregate="clark-negative">{n_negative}</div>
         <div class="clark-tier">PULSE-2</div>
         <div class="clark-label">DISCRIMINATOR ACTIVE</div>
       </div>
       <div class="clark-tile" style="border-top-color:var(--teal);">
-        <div class="clark-count" style="color:var(--teal);">{n_positive}</div>
+        <div class="clark-count" style="color:var(--teal);" data-aggregate="clark-positive">{n_positive}</div>
         <div class="clark-tier">PULSE-1</div>
         <div class="clark-label">DETECTOR ACTIVE</div>
       </div>
       <div class="clark-tile" style="border-top-color:var(--blue);">
-        <div class="clark-count" style="color:var(--blue);">{len(packs)}</div>
+        <div class="clark-count" style="color:var(--blue);" data-aggregate="clark-total">{len(packs)}</div>
         <div class="clark-tier">PULSE-0</div>
         <div class="clark-label">REGISTRY-VALID</div>
       </div>
