@@ -697,6 +697,55 @@ html, body { background: var(--bg); color: var(--text); font-family: var(--sans)
 /* Sparkline container — sits inside body, full-width SVG */
 .body-sparkline { display: block; }
 
+/* Single highlighted supporting KPI block (HOL-15 — Box 3 simplification).
+   One bold stat block replaces the 3-tile clutter. */
+.body-primary-kpi {
+  background: var(--card-2);
+  border: 1px solid var(--border);
+  border-top-width: 3px;
+  padding: 12px 14px;
+  display: flex; align-items: baseline; gap: 14px;
+}
+.body-primary-kpi-value {
+  font-family: var(--mono);
+  font-size: 28px; font-weight: 700; line-height: 1;
+}
+.body-primary-kpi-meta {
+  display: flex; flex-direction: column; gap: 2px;
+}
+.body-primary-kpi-label {
+  font-size: 9px; letter-spacing: 1.2px;
+  color: var(--text-3); text-transform: uppercase;
+  font-weight: 800;
+}
+.body-primary-kpi-sub {
+  font-size: 10px; color: var(--text-2);
+}
+
+/* Progressive-disclosure block (HOL-15) — native <details>, no JS. */
+.body-disclosure {
+  border-top: 1px dashed var(--border);
+  padding-top: 4px;
+}
+.body-disclosure-summary {
+  font-size: 9px; color: var(--text-3);
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 1.4px;
+  padding: 4px 0;
+  list-style: none;
+  font-weight: 800;
+}
+.body-disclosure-summary::-webkit-details-marker { display: none; }
+.body-disclosure-summary::after { content: " ▾"; color: var(--text-3); }
+details[open] > .body-disclosure-summary::after { content: " ▴"; }
+.body-disclosure-content {
+  padding: 6px 0 2px;
+  font-size: 10px; color: var(--text-2);
+  display: flex; flex-direction: column; gap: 4px;
+  font-family: var(--mono);
+}
+
 .body-table { width: 100%; border-collapse: collapse; font-size: 10px; }
 .body-table th { text-align: left; padding: 4px 6px; font-size: 9px;
                  color: var(--text-3); letter-spacing: 0.5px;
@@ -989,6 +1038,39 @@ def body_quality_strip(items: list[str], label: str = "DECISION QUALITY") -> str
         f'<span class="body-quality-label">{label}</span>'
         f'<span class="body-quality-items">{items_html}</span>'
         f'</div>'
+    )
+
+
+def body_primary_kpi(value: str, label: str, sub: str, color: str) -> str:
+    """Single highlighted KPI — full-width supporting stat block (HOL-15).
+
+    Used when one KPI deserves visual primacy after a hero element
+    (e.g., Box 3 EVIDENCE's primary supporting stat after the sparkline).
+    Replaces 3-tile clutter with one bold stat + room to breathe.
+    """
+    return (
+        f'<div class="body-primary-kpi" style="border-top-color:{color};">'
+        f'<div class="body-primary-kpi-value" style="color:{color};">{value}</div>'
+        f'<div class="body-primary-kpi-meta">'
+        f'<span class="body-primary-kpi-label">{label}</span>'
+        f'<span class="body-primary-kpi-sub">{sub}</span>'
+        f'</div>'
+        f'</div>'
+    )
+
+
+def body_disclosure(summary: str, content: str) -> str:
+    """Progressive-disclosure block — native HTML <details>/<summary> (HOL-15).
+
+    Secondary KPIs and detail metadata hide here so the box body holds a
+    single primary focal point. No JS — uses the <details> element which
+    is keyboard/screen-reader accessible by default.
+    """
+    return (
+        f'<details class="body-disclosure">'
+        f'<summary class="body-disclosure-summary">{summary}</summary>'
+        f'<div class="body-disclosure-content">{content}</div>'
+        f'</details>'
     )
 
 
@@ -1533,20 +1615,23 @@ def render_box3(packs: list[dict]) -> str:
             f'<div style="padding:4px 0 2px; font-size:9px; color:var(--text-3); '
             f'letter-spacing:1.4px; text-transform:uppercase;">30-day trend</div>'
             + sparkline_svg(trend, spark_color)
-            + body_kpi_tiles([
-                (str(peak_day),
-                 "PEAK DAY",
-                 "highest in 30d window",
-                 "var(--amber)"),
-                (cohort_over,
-                 "COHORT OVER-INDEX",
-                 "vulnerable vs baseline",
-                 "var(--amber)" if cohort_over != "—" else "var(--text-3)"),
-                (f"{total_30d:,}",
-                 "30-DAY TOTAL",
-                 "cumulative affected sessions",
-                 "var(--blue)"),
-            ])
+            # HOL-15 — ONE primary supporting KPI (was 3 competing tiles).
+            # 30-day total = scale signal; peak_day duplicates the sparkline
+            # and cohort_over may be unavailable for some packs.
+            + body_primary_kpi(
+                value=f"{total_30d:,}",
+                label="30-DAY TOTAL",
+                sub="cumulative affected sessions",
+                color="var(--blue)",
+            )
+            # HOL-15 — secondary KPIs behind native <details> progressive disclosure
+            + body_disclosure(
+                summary="DETAIL",
+                content=(
+                    f'<span><strong>Peak day:</strong> {peak_day} (highest in 30d window)</span>'
+                    f'<span><strong>Cohort over-index:</strong> {cohort_over} (vulnerable vs baseline)</span>'
+                ),
+            )
             + body_lines([
                 ("<strong>What this tells us:</strong> climbing trend — friction "
                  "compounding week-over-week; drill V3 for cohort cuts & journey replay",
