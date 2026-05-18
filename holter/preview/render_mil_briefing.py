@@ -233,6 +233,141 @@ a { color: var(--blue); text-decoration: none; }
 .topnav-reset.active {
   color: var(--amber); border-color: var(--amber);
 }
+
+/* ── Search overlay (HOL-10 phase 2) ─────────────────────────── */
+.search-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(0, 8, 16, 0.82);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 96px;
+}
+.search-overlay.open { display: flex; }
+.search-modal {
+  width: 640px;
+  max-width: 92vw;
+  background: var(--panel-bg);
+  border: 1px solid var(--blue);
+  border-radius: 8px;
+  box-shadow: 0 8px 40px rgba(0, 174, 239, 0.25);
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+}
+.search-modal-head {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.search-input {
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 16px;
+  outline: none;
+  padding: 0;
+}
+.search-input::placeholder { color: var(--text-3); }
+.search-meta {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-3);
+  margin-top: 8px;
+  letter-spacing: 0.6px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.search-hint-keys {
+  display: inline-block;
+  padding: 1px 5px;
+  font-family: var(--mono);
+  font-size: 10px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-2);
+  margin-right: 4px;
+}
+.search-results {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 80px;
+}
+.search-result {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 10px 18px;
+  border-bottom: 1px solid #001E30;
+  cursor: pointer;
+  align-items: center;
+}
+.search-result:last-child { border-bottom: none; }
+.search-result:hover, .search-result.active { background: #002030; }
+.search-result.active { border-left: 3px solid var(--blue); padding-left: 15px; }
+.search-result-cell {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-3);
+  letter-spacing: 0.5px;
+}
+.search-result-title {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--text);
+  word-break: break-word;
+}
+.search-result-title mark {
+  background: rgba(245, 166, 35, 0.25);
+  color: var(--amber);
+  padding: 0 2px;
+  border-radius: 2px;
+}
+.search-result-screen {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--text-2);
+  margin-top: 2px;
+  word-break: break-word;
+}
+.search-result-screen mark {
+  background: rgba(245, 166, 35, 0.25);
+  color: var(--amber);
+}
+.search-result-badge {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.5px;
+  padding: 2px 7px;
+  border-radius: 3px;
+  font-weight: 700;
+}
+.search-result-badge.positive { color: var(--red); border: 1px solid rgba(204,0,0,0.5); background: rgba(204,0,0,0.08); }
+.search-result-badge.negative { color: var(--amber); border: 1px solid var(--amber); background: rgba(245,166,35,0.08); }
+.search-no-results {
+  padding: 24px 18px;
+  text-align: center;
+  color: var(--text-3);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-style: italic;
+}
+
+/* Pack-card flash on jump-to */
+@keyframes pack-flash {
+  0%   { box-shadow: 0 0 0 0 rgba(0, 174, 239, 0); }
+  15%  { box-shadow: 0 0 0 4px rgba(0, 174, 239, 0.55); }
+  100% { box-shadow: 0 0 0 0 rgba(0, 174, 239, 0); }
+}
+.pack-card.flash { animation: pack-flash 1.8s ease-out; }
 .topnav-select-label {
   font-family: var(--mono); font-size: 9px; color: var(--text-3);
   text-transform: uppercase; letter-spacing: 0.8px; margin-right: 4px;
@@ -1271,6 +1406,185 @@ def render_bench_block(packs: list[dict]) -> str:
 </div>'''
 
 
+SEARCH_MODAL_HTML = """
+<div class="search-overlay" id="search-overlay" role="dialog" aria-label="Search packs" aria-hidden="true">
+  <div class="search-modal" role="document">
+    <div class="search-modal-head">
+      <input type="text" class="search-input" id="search-input"
+             placeholder="search packs · signatures · screens · authors"
+             autocomplete="off" spellcheck="false" aria-label="Search query">
+      <div class="search-meta">
+        <span><span class="search-hint-keys">↑↓</span>navigate</span>
+        <span><span class="search-hint-keys">↵</span>jump</span>
+        <span><span class="search-hint-keys">Esc</span>close</span>
+        <span style="margin-left:auto;"><span id="search-count">12</span> packs · pack-name · signature · screen · author</span>
+      </div>
+    </div>
+    <div class="search-results" id="search-results"></div>
+  </div>
+</div>
+"""
+
+
+SEARCH_JS = """
+<script>
+/* HOL-10 phase 2 — search overlay.
+ * Open via topnav search icon or `/` keypress (when not focused in an input).
+ * Fuzzy substring match across pack_name + signature + screen + author + cell.
+ * Arrow keys navigate results; Enter jumps to the pack card (closes the modal,
+ * scrolls into view, flashes a blue outline). If the target pack is filtered
+ * out, clears the filters first so the card is visible. */
+(function () {
+  const $overlay = document.getElementById('search-overlay');
+  const $input   = document.getElementById('search-input');
+  const $results = document.getElementById('search-results');
+  const $count   = document.getElementById('search-count');
+  const $icon    = document.querySelector('.topnav-icon[title^="Search"]');
+  let activeIndex = 0;
+  let currentResults = [];
+
+  function getAllPacks() {
+    return Array.from(document.querySelectorAll('.pack-card')).map(card => ({
+      el: card,
+      name: card.dataset.packname || '',
+      author: card.dataset.author || '',
+      domain: card.dataset.domain || '',
+      screen: card.dataset.screen || '',
+      signature: (card.dataset.signature || '').replace(/_/g, ' '),
+      gt: card.dataset.gt || '',
+      cell: card.dataset.cell || '?',
+    }));
+  }
+
+  function searchPacks(q) {
+    const all = getAllPacks();
+    if (!q) return all;
+    const needle = q.toLowerCase();
+    return all.filter(p =>
+      p.name.toLowerCase().includes(needle) ||
+      p.signature.toLowerCase().includes(needle) ||
+      p.screen.toLowerCase().includes(needle) ||
+      p.author.toLowerCase().includes(needle) ||
+      ('cell ' + p.cell).toLowerCase().includes(needle) ||
+      p.domain.toLowerCase().includes(needle)
+    );
+  }
+
+  function escape(s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function highlight(text, q) {
+    if (!q) return escape(text);
+    const t = text;
+    const needle = q.toLowerCase();
+    const idx = t.toLowerCase().indexOf(needle);
+    if (idx < 0) return escape(t);
+    return escape(t.substring(0, idx)) +
+           '<mark>' + escape(t.substring(idx, idx + needle.length)) + '</mark>' +
+           escape(t.substring(idx + needle.length));
+  }
+
+  function renderResults() {
+    const query = $input.value.trim();
+    currentResults = searchPacks(query);
+    $count.textContent = currentResults.length;
+    if (currentResults.length === 0) {
+      $results.innerHTML = '<div class="search-no-results">no packs match \\u201C' + escape(query) + '\\u201D</div>';
+      return;
+    }
+    if (activeIndex >= currentResults.length) activeIndex = 0;
+    $results.innerHTML = currentResults.map((p, i) => {
+      const badgeCls = p.gt === 'negative' ? 'negative' : 'positive';
+      const badgeText = p.gt === 'negative' ? 'NEG' : 'POS';
+      return '<div class="search-result' + (i === activeIndex ? ' active' : '') + '" data-idx="' + i + '">' +
+        '<div class="search-result-cell">CELL ' + p.cell + '</div>' +
+        '<div>' +
+          '<div class="search-result-title">' + highlight(p.signature, query) + '</div>' +
+          '<div class="search-result-screen">' + highlight(p.screen, query) + '</div>' +
+        '</div>' +
+        '<div class="search-result-badge ' + badgeCls + '">' + badgeText + '</div>' +
+      '</div>';
+    }).join('');
+    Array.from($results.querySelectorAll('.search-result')).forEach(el => {
+      el.addEventListener('click', () => {
+        activeIndex = parseInt(el.dataset.idx, 10);
+        selectResult();
+      });
+    });
+  }
+
+  function selectResult() {
+    const r = currentResults[activeIndex];
+    if (!r) return;
+    close();
+    // If target is filtered out, clear filters first so card is visible.
+    if (r.el.style.display === 'none') {
+      const filterSelects = document.querySelectorAll('.topnav-select.active');
+      filterSelects.forEach(s => { s.value = ''; });
+      // trigger one change event so filter JS recomputes
+      const trigger = document.getElementById('filter-domain');
+      if (trigger) trigger.dispatchEvent(new Event('change'));
+    }
+    setTimeout(() => {
+      r.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // restart flash even if already applied
+      r.el.classList.remove('flash');
+      void r.el.offsetWidth;
+      r.el.classList.add('flash');
+    }, 60);
+  }
+
+  function moveActive(delta) {
+    activeIndex = Math.max(0, Math.min(currentResults.length - 1, activeIndex + delta));
+    renderResults();
+    const active = $results.querySelector('.search-result.active');
+    if (active) active.scrollIntoView({ block: 'nearest' });
+  }
+
+  function open() {
+    $overlay.classList.add('open');
+    $overlay.setAttribute('aria-hidden', 'false');
+    $input.value = '';
+    activeIndex = 0;
+    renderResults();
+    setTimeout(() => $input.focus(), 0);
+  }
+
+  function close() {
+    $overlay.classList.remove('open');
+    $overlay.setAttribute('aria-hidden', 'true');
+  }
+
+  // wire
+  if ($icon) {
+    $icon.style.cursor = 'pointer';
+    $icon.addEventListener('click', open);
+  }
+  $overlay.addEventListener('click', e => {
+    if (e.target === $overlay) close();
+  });
+  $input.addEventListener('input', () => { activeIndex = 0; renderResults(); });
+  $input.addEventListener('keydown', e => {
+    if (e.key === 'Escape')        { close(); e.preventDefault(); }
+    else if (e.key === 'ArrowDown'){ moveActive(1); e.preventDefault(); }
+    else if (e.key === 'ArrowUp')  { moveActive(-1); e.preventDefault(); }
+    else if (e.key === 'Enter')    { selectResult(); e.preventDefault(); }
+  });
+  // global `/` shortcut — only when not already typing in an input
+  document.addEventListener('keydown', e => {
+    if (e.key !== '/') return;
+    const ae = document.activeElement;
+    if (ae && /^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName)) return;
+    if ($overlay.classList.contains('open')) return;
+    open();
+    e.preventDefault();
+  });
+})();
+</script>
+"""
+
+
 FILTER_JS = """
 <script>
 /* HOL-10 phase 1 — top-nav filtering.
@@ -1497,7 +1811,7 @@ def render_topnav(packs: list[dict]) -> str:
     <button class="topnav-reset" id="filter-reset" type="button" title="Reset filters (Esc)">Reset</button>
   </div>
   <div class="topnav-utility">
-    <span class="topnav-icon" title="Search packs / journeys (HOL-10 phase 2)">⌕&nbsp;Search</span>
+    <span class="topnav-icon" title="Search packs (click or press /)">⌕&nbsp;Search</span>
     <span class="topnav-divider"></span>
     <span class="topnav-icon" title="Notifications (HOL-10 phase 3)">
       🔔<span class="topnav-icon-badge">3</span>
@@ -1754,7 +2068,9 @@ def render_page(packs: list[dict]) -> str:
   <span class="footer-sep">·</span>
   <span class="footer-item">Generated {now}</span>
 </div>
+{SEARCH_MODAL_HTML}
 {FILTER_JS}
+{SEARCH_JS}
 </body>
 </html>
 '''
