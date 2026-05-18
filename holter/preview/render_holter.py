@@ -1074,12 +1074,21 @@ def body_disclosure(summary: str, content: str) -> str:
     )
 
 
-def sparkline_svg(values: list[float], color: str, width: int = 220, height: int = 36) -> str:
-    """Pure-SVG sparkline — no JS, no chart library, scales to the values given."""
+def sparkline_svg(values: list[float], color: str, width: int = 220, height: int = 36,
+                  reference_value: float | None = None,
+                  reference_color: str = "rgba(180,200,210,0.55)") -> str:
+    """Pure-SVG sparkline — no JS, no chart library, scales to the values given.
+
+    HOL-17: optional reference_value renders as a dashed horizontal line
+    (e.g., Designed Ceiling). The y-axis scale expands to fit both the
+    trend extremes AND the reference, so the line is always visible.
+    """
     if not values:
         return ""
     n = len(values)
-    vmin, vmax = min(values), max(values)
+    # Include reference in the y-axis range so it's always in-frame
+    all_y = list(values) + ([reference_value] if reference_value is not None else [])
+    vmin, vmax = min(all_y), max(all_y)
     span = (vmax - vmin) or 1.0
     step = width / max(n - 1, 1)
     pts = " ".join(
@@ -1088,9 +1097,18 @@ def sparkline_svg(values: list[float], color: str, width: int = 220, height: int
     )
     last_x = (n - 1) * step
     last_y = height - ((values[-1] - vmin) / span) * height
+    # Reference line (drawn behind polyline so the trend sits on top)
+    ref_svg = ""
+    if reference_value is not None:
+        ref_y = height - ((reference_value - vmin) / span) * height
+        ref_svg = (
+            f'<line x1="0" y1="{ref_y:.1f}" x2="{width}" y2="{ref_y:.1f}" '
+            f'stroke="{reference_color}" stroke-width="1" stroke-dasharray="3,3"/>'
+        )
     return (
         f'<svg class="body-sparkline" viewBox="0 0 {width} {height}" '
         f'width="100%" height="{height}" preserveAspectRatio="none">'
+        f'{ref_svg}'
         f'<polyline points="{pts}" fill="none" stroke="{color}" stroke-width="1.5"/>'
         f'<circle cx="{last_x:.1f}" cy="{last_y:.1f}" r="2.5" fill="{color}"/>'
         f'</svg>'
@@ -1587,6 +1605,11 @@ def render_box3(packs: list[dict]) -> str:
     delta_pct   = int(100 * delta_abs / week_ago_n) if week_ago_n else 0
     total_30d   = sum(trend)
     peak_day    = max(trend)
+    # HOL-17 — Designed Ceiling: the engine-defined "acceptable friction"
+    # threshold above which decision-quality flags fire. Stubbed at 150;
+    # real value lives on the verdict object once pulse.workspace lands.
+    designed_ceiling = 150
+    crossed_at_day   = next((i for i, v in enumerate(trend) if v > designed_ceiling), None)
 
     # Direction signal — climbing trend = friction worsening
     delta_dir = "↗" if delta_abs > 0 else ("↘" if delta_abs < 0 else "→")
@@ -1613,8 +1636,16 @@ def render_box3(packs: list[dict]) -> str:
         ),
         body=(
             f'<div style="padding:4px 0 2px; font-size:9px; color:var(--text-3); '
-            f'letter-spacing:1.4px; text-transform:uppercase;">30-day trend</div>'
-            + sparkline_svg(trend, spark_color)
+            f'letter-spacing:1.4px; text-transform:uppercase; '
+            f'display:flex; justify-content:space-between; align-items:baseline;">'
+            f'<span>30-day trend</span>'
+            f'<span style="font-family:var(--mono); letter-spacing:0.5px; '
+            f'text-transform:none;">- - designed ceiling {designed_ceiling}'
+            + (f' · crossed day {crossed_at_day+1}' if crossed_at_day is not None else '')
+            + f'</span>'
+            f'</div>'
+            # HOL-17 — pass reference_value so the sparkline shows the ceiling
+            + sparkline_svg(trend, spark_color, reference_value=designed_ceiling)
             # HOL-15 — ONE primary supporting KPI (was 3 competing tiles).
             # 30-day total = scale signal; peak_day duplicates the sparkline
             # and cohort_over may be unavailable for some packs.
