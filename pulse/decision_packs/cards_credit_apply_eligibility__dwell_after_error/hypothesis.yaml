@@ -57,3 +57,26 @@ audit:
     - analytic_inputs_hash
     - cohort_split_breakdown
     - threshold_config_hash
+
+# --- Canvas slots (PULSE-103: actors / value_inputs / risk_inputs) ---
+
+actors:
+  - investigation_consumer
+  - compliance_reviewer
+
+value_inputs:
+  severity_class: high
+  vulnerable_cohort_sensitivity: true
+  population_segment_addressed: uk_retail_card_applicants
+
+risk_inputs:
+  regulatory_taxonomies:
+    - fca_consumer_duty.outcome_1_products_services
+    - fca_consumer_duty.outcome_3_consumer_understanding
+    - eu_ai_act.high_risk_credit_scoring
+  policy_areas:
+    - credit_card_affordability
+    - vulnerable_customer_handling
+  chronicle_precedents:
+    - CHR-friction-005
+    - CHR-friction-006

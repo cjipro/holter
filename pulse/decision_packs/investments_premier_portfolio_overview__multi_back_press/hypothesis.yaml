@@ -61,3 +61,20 @@ audit:
     - threshold_config_hash
     - inter_press_interval_distribution
     - filter_state_at_burst_distribution
+
+# --- Canvas slots (PULSE-103: actors / value_inputs / risk_inputs) ---
+
+actors:
+  - investigation_consumer
+
+value_inputs:
+  severity_class: low
+  vulnerable_cohort_sensitivity: false
+  population_segment_addressed: uk_premier_investments_clients
+
+risk_inputs:
+  regulatory_taxonomies:
+    - fca_consumer_duty.outcome_2_price_value
+  policy_areas:
+    - premier_advisory_standards
+  chronicle_precedents: []

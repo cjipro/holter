@@ -60,3 +60,21 @@ audit:
     - threshold_config_hash
     - inter_press_interval_distribution
     - field_value_change_distribution
+
+# --- Canvas slots (PULSE-103: actors / value_inputs / risk_inputs) ---
+
+actors:
+  - investigation_consumer
+
+value_inputs:
+  severity_class: medium
+  vulnerable_cohort_sensitivity: true
+  population_segment_addressed: uk_retail_card_applicants
+
+risk_inputs:
+  regulatory_taxonomies:
+    - fca_consumer_duty.outcome_3_consumer_understanding
+  policy_areas:
+    - credit_card_affordability
+  chronicle_precedents:
+    - CHR-friction-006

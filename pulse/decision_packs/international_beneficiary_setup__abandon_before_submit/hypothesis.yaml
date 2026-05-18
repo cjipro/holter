@@ -63,3 +63,26 @@ audit:
     - final_field_focus_distribution
     - sanctions_screening_decision_log_ref
     - 24h_return_rate
+
+# --- Canvas slots (PULSE-103: actors / value_inputs / risk_inputs) ---
+
+actors:
+  - investigation_consumer
+  - compliance_reviewer
+
+value_inputs:
+  severity_class: high
+  vulnerable_cohort_sensitivity: true
+  population_segment_addressed: uk_retail_international_payment_initiators
+
+risk_inputs:
+  regulatory_taxonomies:
+    - fca_consumer_duty.outcome_4_consumer_support
+    - fca_operational_resilience.ps21_3
+    - fatf.recommendation_10_customer_due_diligence
+  policy_areas:
+    - international_payment_screening
+    - sanctions_compliance
+    - vulnerable_customer_handling
+  chronicle_precedents:
+    - CHR-friction-007

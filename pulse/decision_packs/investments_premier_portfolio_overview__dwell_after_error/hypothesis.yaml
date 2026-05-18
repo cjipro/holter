@@ -82,3 +82,21 @@ audit:
     - threshold_config_hash
     - suppression_signal_distribution
     - non_fire_decision_log
+
+# --- Canvas slots (PULSE-103: actors / value_inputs / risk_inputs) ---
+# Cell 10 is the FrictionBench load-bearing negative — these slots declare
+# the calibration role rather than a remediation target.
+
+actors:
+  - investigation_consumer
+  - ml_engineer
+
+value_inputs:
+  severity_class: low
+  vulnerable_cohort_sensitivity: false
+  population_segment_addressed: uk_premier_investments_clients
+
+risk_inputs:
+  regulatory_taxonomies: []
+  policy_areas: []
+  chronicle_precedents: []

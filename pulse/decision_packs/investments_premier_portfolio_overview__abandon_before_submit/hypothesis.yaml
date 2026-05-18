@@ -74,3 +74,22 @@ audit:
     - inferred_action_distribution
     - 24h_return_rate
     - advised_phone_handoff_rate
+
+# --- Canvas slots (PULSE-103: actors / value_inputs / risk_inputs) ---
+
+actors:
+  - investigation_consumer
+  - ml_engineer
+
+value_inputs:
+  severity_class: medium
+  vulnerable_cohort_sensitivity: false
+  population_segment_addressed: uk_premier_investments_clients
+
+risk_inputs:
+  regulatory_taxonomies:
+    - fca_consumer_duty.outcome_2_price_value
+    - fca_consumer_duty.outcome_4_consumer_support
+  policy_areas:
+    - premier_advisory_standards
+  chronicle_precedents: []

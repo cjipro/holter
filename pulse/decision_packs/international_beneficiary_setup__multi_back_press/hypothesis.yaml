@@ -58,3 +58,21 @@ audit:
     - cohort_split_breakdown
     - threshold_config_hash
     - inter_press_interval_distribution
+
+# --- Canvas slots (PULSE-103: actors / value_inputs / risk_inputs) ---
+
+actors:
+  - investigation_consumer
+
+value_inputs:
+  severity_class: medium
+  vulnerable_cohort_sensitivity: true
+  population_segment_addressed: uk_retail_international_payment_initiators
+
+risk_inputs:
+  regulatory_taxonomies:
+    - fca_consumer_duty.outcome_3_consumer_understanding
+    - fca_consumer_duty.outcome_4_consumer_support
+  policy_areas:
+    - international_payment_screening
+  chronicle_precedents: []

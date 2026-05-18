@@ -209,7 +209,7 @@ def test_validate_does_not_mutate_input() -> None:
     assert hyp == snapshot
 
 
-# --- Acceptance: 12 existing packs FAIL (expected; PULSE-104 backfills) ------
+# --- Acceptance: 12 existing packs all PASS post-PULSE-104 backfill ----------
 
 
 def _existing_hypothesis_files() -> list[Path]:
@@ -220,8 +220,8 @@ def test_seed_batch_hypothesis_files_exist() -> None:
     """Sanity: the seed-batch packs are present so the next test has
     something to assert against."""
     files = _existing_hypothesis_files()
-    assert len(files) >= 9, (
-        f"expected ≥9 seed-batch hypothesis.yaml files, found {len(files)}"
+    assert len(files) >= 12, (
+        f"expected ≥12 seed-batch hypothesis.yaml files, found {len(files)}"
     )
 
 
@@ -229,17 +229,32 @@ def test_seed_batch_hypothesis_files_exist() -> None:
     "hyp_path", _existing_hypothesis_files(),
     ids=lambda p: p.parent.name,
 )
-def test_seed_batch_pack_fails_new_validator(hyp_path: Path) -> None:
-    """Ticket acceptance: every existing pack MUST fail under the new
-    validator (none of them declare actors / value_inputs / risk_inputs
-    yet — PULSE-104 backfill is the next ticket that flips this to pass).
+def test_seed_batch_pack_passes_new_validator(hyp_path: Path) -> None:
+    """PULSE-104 backfilled all 12 seed packs with product-meaningful
+    actors / value_inputs / risk_inputs declarations — they all now
+    PASS the canvas-completeness validator.
 
-    This test is intentionally a NEGATIVE check today. When PULSE-104
-    lands and backfills all the packs, this test will start failing,
-    and the maintainer should remove or invert it as part of that
-    ticket's close-out."""
-    with pytest.raises(DecisionPackHypothesisError):
-        load_hypothesis(hyp_path)
+    This test inverts the PULSE-103-era negative check (which asserted
+    all 12 FAIL pre-backfill). The inversion IS the acceptance signal:
+    PULSE-103 + PULSE-104 together complete the canvas-completeness
+    discipline across the seed batch."""
+    hyp = load_hypothesis(hyp_path)
+    # spot-check the canvas slots actually landed (not just that the
+    # validator was lenient)
+    assert "actors" in hyp and hyp["actors"]
+    assert "value_inputs" in hyp
+    assert "risk_inputs" in hyp
+
+
+def test_seed_batch_severity_classes_distribute_across_enum() -> None:
+    """PULSE-104 backfill should produce a mix of severity_class values
+    across the 12 seed packs (not all high, not all low). Confirms the
+    backfill was product-meaningful, not placeholder."""
+    library = [load_hypothesis(p) for p in _existing_hypothesis_files()]
+    severities = {h["value_inputs"]["severity_class"] for h in library}
+    assert len(severities) >= 2, (
+        f"all 12 packs share the same severity_class — likely placeholder backfill: {severities}"
+    )
 
 
 # --- Load API ----------------------------------------------------------------
