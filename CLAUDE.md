@@ -174,33 +174,53 @@ The Workspace surface (HOL-3) uses the MIL Sonar V4 briefing template, **not** t
 
 `holter/preview/templates_preview.py` (Bloomberg-terminal Streamlit) is **deprecated** — file in repo as design-iteration reference, not served on any port.
 
-### Ticket spine — Value + Risk methodology architecture (FILED 2026-05-18)
+### Ticket spine — Value + Risk + Diagnosis methodology architecture (SHIPPED 2026-05-18)
 
-8 tickets filed dependency-ordered (no phases):
+Full v2 design spine shipped end-to-end in one day. Filed dependency-ordered (no phases), built and closed in the order the graph allowed.
 
-| Key | Title | Blockers |
-|---|---|---|
-| [PULSE-99](https://cjipro.atlassian.net/browse/PULSE-99) | Risk methodology v0 | PULSE-102 |
-| [PULSE-100](https://cjipro.atlassian.net/browse/PULSE-100) | Chronicle precedent library v0 | — |
-| [PULSE-101](https://cjipro.atlassian.net/browse/PULSE-101) | Value methodology v0 | PULSE-102 |
-| [PULSE-102](https://cjipro.atlassian.net/browse/PULSE-102) | bank_policy.yaml config contract | — |
-| [PULSE-103](https://cjipro.atlassian.net/browse/PULSE-103) | hypothesis.yaml schema evolution + validator | PULSE-99, PULSE-101 |
-| [PULSE-104](https://cjipro.atlassian.net/browse/PULSE-104) | 12-pack backfill for canvas-completeness | PULSE-103 |
-| [HOL-9](https://cjipro.atlassian.net/browse/HOL-9) | Briefing surface: Value + Risk tier badges | PULSE-99, PULSE-100, PULSE-101 |
-| [HOL-10](https://cjipro.atlassian.net/browse/HOL-10) | Top nav functional wire-up | — |
+| Key | Title | Status | Commit |
+|---|---|---|---|
+| [PULSE-102](https://cjipro.atlassian.net/browse/PULSE-102) | bank_policy.yaml config contract | ✅ Done | `20b3aec` |
+| [PULSE-100](https://cjipro.atlassian.net/browse/PULSE-100) | Chronicle precedent library v0 (10 entries, curator-pending) | ✅ Done | `9cdf7a2` |
+| [PULSE-99](https://cjipro.atlassian.net/browse/PULSE-99) | Risk methodology v0 + regulatory_taxonomy.yaml | ✅ Done | `6ef8fa5` |
+| [PULSE-101](https://cjipro.atlassian.net/browse/PULSE-101) | Value methodology v0 | ✅ Done | `2eaa7d1` |
+| [PULSE-103](https://cjipro.atlassian.net/browse/PULSE-103) | hypothesis.yaml canvas-completeness validator | ✅ Done | `b255b24` |
+| [PULSE-105](https://cjipro.atlassian.net/browse/PULSE-105) | Diagnosis methodology v0 (Support-vs-Journey, runs BEFORE Risk/Value) | ✅ Done | `ba101cf` |
+| [PULSE-104](https://cjipro.atlassian.net/browse/PULSE-104) | 12-pack backfill — product-meaningful canvas slots | ✅ Done | `6b37f7b` |
+| [PULSE-106](https://cjipro.atlassian.net/browse/PULSE-106) | Agentic AI placement worked example (Diagnosis → Risk → Value → Action tier) | ✅ Done | `834d577` |
+| [HOL-11](https://cjipro.atlassian.net/browse/HOL-11) | Briefing surface — placement matrix view | ✅ Done | `5145af1` |
+| [HOL-9](https://cjipro.atlassian.net/browse/HOL-9) | Briefing surface — per-pack Value/Risk/Action badges + V3 scoring panels + Chronicle as matcher | ✅ Done | `1421be2` |
+| [HOL-10](https://cjipro.atlassian.net/browse/HOL-10) | Top nav functional wire-up | 🟡 Phases 1+2 done; 3-6 pending | — |
 
 **Project-split rule (formalised 2026-05-18):**
 - Logical framework / methodology / engine → **PULSE**
 - Design / UI / surface / experience → **HOL**
 
-**Now-actionable (zero blockers):** PULSE-100 · PULSE-102 · HOL-10.
+**Decision flow (engine spine, in order):**
+```
+Diagnosis (PULSE-105) → is this an AI-deployable problem?
+       ↓
+Risk    (PULSE-99)    → how exposed if we deploy / don't?
+       ↓
+Value   (PULSE-101)   → how big is the prize if we deploy correctly?
+       ↓
+CLARK-style Action tier → ACUTE / REGULATORY-FLAG / COMMERCIAL-OPPORTUNITY / WATCH / NOMINAL / NEEDS_MORE_DATA
+```
 
-**HOL-10 in-progress:** phase 1 (filters) + phase 2 (search) shipped 2026-05-18. Phases 3 (notifications/canvas-guide/settings), 4 (V3-layer filter recompute), 5 (multi-select), 6 (Date — blocked on PULSE-93) pending.
+Diagnosis can OVERRIDE the 2x2: `JOURNEY_PROBLEM` → "fix the journey" verb regardless of Action tier; `INCONCLUSIVE` → `NEEDS_MORE_DATA` regardless of how appealing the cell looks. See `pulse/diagnosis/DIAGNOSIS_DESIGN.md`.
+
+**Curator-pending state on Chronicle:** all 10 seed CHR-friction entries ship `verification_status: pending_human_review`. Matcher fails closed. Risk methodology's `chronicle_precedent_match` adjustment cannot fire until a UK-banking-enforcement curator flips entries to `verified`. The briefing surface renders this transparently — never silent. See `pulse/risk/chronicle/SCHEMA.md` § Two-stage trust model.
+
+**HOL-10 still in-progress:** phases 1 (filters) + 2 (search) shipped 2026-05-18 morning. Phases 3 (notifications/canvas-guide/settings), 4 (V3-layer filter recompute), 5 (multi-select), 6 (Date — blocked on PULSE-93) pending.
+
+### Worked-example demo
+
+`py -m pulse.scenarios.agentic_ai_placement.run` prints the placement matrix end-to-end. Briefing surface at `http://localhost:8502/` (start with `py holter/preview/serve_briefing.py`) renders the same matrix as a V3 panel plus per-pack badges + scoring panels + Chronicle as matcher.
 
 ### Session logs
 
 - [`docs/sessions/2026-05-17.md`](docs/sessions/2026-05-17.md) — standup + pulse/ migration + HOL-1 closure
-- [`docs/sessions/2026-05-18.md`](docs/sessions/2026-05-18.md) — 9-pack fan-out + briefing/canvas previews + Value/Risk architecture + 8 tickets filed + HOL-10 phases 1+2 + 8502 reroute
+- [`docs/sessions/2026-05-18.md`](docs/sessions/2026-05-18.md) — 9-pack fan-out + briefing/canvas previews + Value/Risk architecture + 8 tickets filed + HOL-10 phases 1+2 + 8502 reroute + **evening: full v2 spine shipped (10 tickets PULSE-99/100/101/102/103/104/105/106 + HOL-9/HOL-11)**
 
 ## v1 design spine (already shipped, lives in while-sleeping pending migration)
 
