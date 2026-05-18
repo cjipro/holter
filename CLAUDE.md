@@ -135,13 +135,72 @@ with lineage hash + confidence band + Designed Ceiling on every chart.
 
 **Build order:** HOL-3 (Workspace) → HOL-4 (Home) → HOL-5 (API) → HOL-6 (MLOps) → HOL-7 (Monitor). HOL-8 (pyproject 3.11 tightening) runs in parallel.
 
-**Hard launch gate on HOL-7:** decision-packs registry must have ≥40 templates covering FrictionBench 12-cell × multiple signatures. Currently 1 (`pulse/decision_packs/example_pack/`). Calendar dates do not unlock this; registry depth does.
+**Hard launch gate on HOL-7:** decision-packs registry must have ≥40 templates covering FrictionBench 12-cell × multiple signatures. **12 cells now deep** (3 showcase + 9 fan-out done 2026-05-17/18); 13 packs total including the `journey_friction` test fixture. ~27 more cohort/remediation variant packs to clear the 40-floor. Calendar dates do not unlock this; registry depth does.
 
 **Full plan + verification + risks:** `C:\Users\hussa\.claude\plans\adaptive-mapping-popcorn.md`
 
-### Session log
+### Canvas-as-discipline + Value/Risk computed slots (LOCKED 2026-05-18)
 
-Latest session: [`docs/sessions/2026-05-17.md`](docs/sessions/2026-05-17.md) — full record of this repo's standup, pulse/ migration, and (now) HOL-1 closure.
+Holter understands the Barclays Data Product Canvas (Decision Intelligence Demand & Delivery Playbook, p.51) but communicates in briefing form, not canvas form. **Canvas = skeleton (governance contract). Briefing = body (voice).**
+
+Canvas slots split into three classes:
+- **Declared** (author writes, validator checks): Problem · Hypothesis · Data · Actions · Actors · KPIs · Risks
+- **Computed** (engine derives at runtime, reproducible per methodology version): **Value · Performance/Impact · Solution**
+- **Attached** (organizational fact, lives outside pack): Budget · Owner
+
+**Value & Risk are computed**, not declared. Each gets a methodology peer of `pulse/frictionbench/`:
+- `pulse/value/` — Value tier from friction severity × population × frequency × cohort vulnerability × counterfactual baseline
+- `pulse/risk/` — Risk tier from friction signature + regulatory taxonomy match + bank-policy thresholds + Chronicle precedent matches
+
+**Value × Risk 2×2 → CLARK-style Action tier:** `ACUTE / REGULATORY-FLAG / COMMERCIAL-OPPORTUNITY / WATCH / NOMINAL`. Load-bearing cell is `REGULATORY-FLAG` (high risk, low value — "not just a value question").
+
+### MIL briefing as canonical Workspace aesthetic (LOCKED 2026-05-18)
+
+The Workspace surface (HOL-3) uses the MIL Sonar V4 briefing template, **not** the editorial / news-portal aesthetic. HOL-1's news-portal lock still applies to **Pulse Home** (HOL-4 — broad-audience entry feed) — surface-by-surface aesthetic from now on.
+
+| Surface | Aesthetic | Audience |
+|---|---|---|
+| Pulse Home (HOL-4) | News portal | All roles, entry feed |
+| Investigation Workspace (HOL-3) | MIL briefing | Investigation pros |
+| MLOps Console (HOL-6) | MIL briefing | ML eng + MRM |
+| Pulse Monitor (HOL-7) | TBD | Day-to-day analysts |
+| Pulse Platform API (HOL-5) | n/a (programmatic) | Other tools |
+
+**Where to find the briefing:**
+- Renderer: `holter/preview/render_mil_briefing.py` (static HTML generator)
+- Output: `dist/preview/index.html` (gitignored)
+- Served at: **http://localhost:8502/** via `holter/preview/serve_briefing.py`
+- Start: `py holter/preview/serve_briefing.py`
+
+`holter/preview/templates_preview.py` (Bloomberg-terminal Streamlit) is **deprecated** — file in repo as design-iteration reference, not served on any port.
+
+### Ticket spine — Value + Risk methodology architecture (FILED 2026-05-18)
+
+8 tickets filed dependency-ordered (no phases):
+
+| Key | Title | Blockers |
+|---|---|---|
+| [PULSE-99](https://cjipro.atlassian.net/browse/PULSE-99) | Risk methodology v0 | PULSE-102 |
+| [PULSE-100](https://cjipro.atlassian.net/browse/PULSE-100) | Chronicle precedent library v0 | — |
+| [PULSE-101](https://cjipro.atlassian.net/browse/PULSE-101) | Value methodology v0 | PULSE-102 |
+| [PULSE-102](https://cjipro.atlassian.net/browse/PULSE-102) | bank_policy.yaml config contract | — |
+| [PULSE-103](https://cjipro.atlassian.net/browse/PULSE-103) | hypothesis.yaml schema evolution + validator | PULSE-99, PULSE-101 |
+| [PULSE-104](https://cjipro.atlassian.net/browse/PULSE-104) | 12-pack backfill for canvas-completeness | PULSE-103 |
+| [HOL-9](https://cjipro.atlassian.net/browse/HOL-9) | Briefing surface: Value + Risk tier badges | PULSE-99, PULSE-100, PULSE-101 |
+| [HOL-10](https://cjipro.atlassian.net/browse/HOL-10) | Top nav functional wire-up | — |
+
+**Project-split rule (formalised 2026-05-18):**
+- Logical framework / methodology / engine → **PULSE**
+- Design / UI / surface / experience → **HOL**
+
+**Now-actionable (zero blockers):** PULSE-100 · PULSE-102 · HOL-10.
+
+**HOL-10 in-progress:** phase 1 (filters) + phase 2 (search) shipped 2026-05-18. Phases 3 (notifications/canvas-guide/settings), 4 (V3-layer filter recompute), 5 (multi-select), 6 (Date — blocked on PULSE-93) pending.
+
+### Session logs
+
+- [`docs/sessions/2026-05-17.md`](docs/sessions/2026-05-17.md) — standup + pulse/ migration + HOL-1 closure
+- [`docs/sessions/2026-05-18.md`](docs/sessions/2026-05-18.md) — 9-pack fan-out + briefing/canvas previews + Value/Risk architecture + 8 tickets filed + HOL-10 phases 1+2 + 8502 reroute
 
 ## v1 design spine (already shipped, lives in while-sleeping pending migration)
 
