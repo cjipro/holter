@@ -78,9 +78,29 @@ _TIER_RANK = {
     "NEEDS_MORE_DATA":          5,
 }
 
+# HOL-55 — dual-queue split: which tiers belong to each lens. Compliance
+# answers the CRO question; Commercial answers the CCO/COO question. Same
+# corpus, two queues, no severity bias against commercial-tier packs
+# (which was the audit-flagged structural failure mode).
+_COMPLIANCE_TIERS = {"ACUTE", "REGULATORY-FLAG"}
+_COMMERCIAL_VALUE_TIERS = {"COMMERCIAL-OPPORTUNITY", "SIGNIFICANT"}
+
+# Value-tier rank — used to sort the commercial queue. Higher tier first,
+# then sized monthly lift desc. Distinct from _TIER_RANK above which sorts
+# Action tier (a Risk × Value composite).
+_VALUE_TIER_RANK = {
+    "COMMERCIAL-OPPORTUNITY": 0,
+    "SIGNIFICANT":            1,
+    "WATCH":                  2,
+    "NOMINAL":                3,
+}
+
 
 def collect_flagged_signals(packs: list[dict]) -> list[dict]:
-    """All packs sorted by Action tier severity, highest-first."""
+    """All packs sorted by Action tier severity, highest-first.
+
+    HOL-55: this is the COMPLIANCE queue's input. Commercial queue is sorted
+    by Value tier + sized lift via `collect_commercial_signals` below."""
     out = []
     for p in packs:
         cs = get_pack_cell(p["meta"]["pack_name"])
@@ -95,6 +115,53 @@ def collect_flagged_signals(packs: list[dict]) -> list[dict]:
         })
     out.sort(key=lambda r: r["rank"])
     return out
+
+
+def collect_commercial_signals(packs: list[dict]) -> list[dict]:
+    """HOL-55 — Commercial queue input. Packs sorted by Value tier first,
+    then by sized monthly lift (descending). Packs without a sized lift
+    (no ARPU for the journey) sort at the end of their tier band.
+
+    Distinct from `collect_flagged_signals`: this lens IGNORES action_tier
+    (which folds Risk into the ranking — that's the CRO question) and ranks
+    purely by Value-axis output (the CCO question). The two queues may
+    overlap on ACUTE packs (high value × high risk — these show up in
+    both lenses; that's the load-bearing case)."""
+    out = []
+    for p in packs:
+        cs = get_pack_cell(p["meta"]["pack_name"])
+        if cs is None:
+            continue
+        value_tier = cs.value.tier
+        if value_tier not in _COMMERCIAL_VALUE_TIERS:
+            continue
+        lift = getattr(cs.value, "estimated_monthly_lift_gbp", None)
+        out.append({
+            "pack": p,
+            "cell_score": cs,
+            "tier": cs.action_tier,             # for badge consistency
+            "value_tier": value_tier,
+            "lift_gbp": lift,
+            "rank": _VALUE_TIER_RANK.get(value_tier, 99),
+            "journey": cs.journey_id,
+        })
+    # Sort: value-tier rank ascending (COMMERCIAL-OPPORTUNITY first),
+    # then sized lift descending (None → 0, sorts to end of band).
+    out.sort(key=lambda r: (r["rank"], -(r["lift_gbp"] or 0.0)))
+    return out
+
+
+def _format_lift_gbp_home(amount: float | None) -> str | None:
+    """HOL-55 — same shape as render_holter._format_lift_gbp; defined locally
+    so render_home.py doesn't take a cross-renderer import (preserves the
+    HOL-35 Cannon condition)."""
+    if amount is None:
+        return None
+    if amount >= 1_000_000:
+        return f"£{amount / 1_000_000:.1f}m/mo"
+    if amount >= 1_000:
+        return f"£{amount / 1_000:.0f}k/mo"
+    return f"£{amount:.0f}/mo"
 
 
 def select_flagged_grid(flagged: list[dict], hero: dict, n: int = 3) -> list[dict]:
@@ -313,12 +380,16 @@ def render_velocity_tag(delta: dict) -> str:
 
 
 def render_confidence_chip(delta: dict) -> str:
-    """Small chip next to the tier badge — engine confidence in the verdict."""
+    """Small chip next to the tier badge — engine confidence in the verdict.
+
+    HOL-55 — prefix with "CONF" so the dimension is visible without hover.
+    Audit-flagged ambiguity: numeric chip on its own ("MEDIUM 8.10") read
+    as severity/value/risk to non-specialist viewers."""
     return (
         f'<span class="confidence-chip" '
         f'style="color:{delta["conf_color"]};border-color:{delta["conf_color"]};" '
         f'data-tooltip="Engine confidence in this verdict — drivers visible in Workspace (HOL-19).">'
-        f'{delta["conf_label"]} {delta["conf_score"]}'
+        f'CONF {delta["conf_label"]} {delta["conf_score"]}'
         f'</span>'
     )
 
@@ -720,6 +791,126 @@ a { color: var(--blue); text-decoration: none; }
   box-shadow: 0 4px 12px rgba(0,0,0,0.6);
   pointer-events: none;
 }
+
+/* ──────────────────────────────────────────────────────────────────────
+   HOL-55 — Dual-queue feed: Compliance Escalations | Commercial Opportunities
+   ────────────────────────────────────────────────────────────────────── */
+
+.dual-hero {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  margin-bottom: 24px;
+}
+.dual-queue {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  margin-bottom: 24px;
+}
+@media (max-width: 1100px) {
+  .dual-hero, .dual-queue { grid-template-columns: 1fr; }
+}
+
+.dual-hero-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.dual-hero-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  color: var(--text-2);
+  display: flex; align-items: baseline; gap: 10px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.dual-hero-label-sub {
+  color: var(--text-3);
+  font-weight: 400;
+  letter-spacing: 0.8px;
+}
+
+/* When inside dual-hero, hero-card must shrink — single-column layout */
+.dual-hero .hero-card {
+  margin: 0;
+  min-height: 240px;
+}
+.hero-card--commercial { border-left-color: var(--green); }
+
+.section-label--queue {
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: baseline;
+}
+.section-label-sub {
+  color: var(--text-3);
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 400;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+}
+.home-queue {
+  min-width: 0;
+}
+
+/* Inside a dual-queue, each queue's feed-grid renders 1 column (3 cards
+   stacked vertically), since the queue itself occupies one column of the
+   parent dual-queue grid. */
+.feed-grid--single {
+  grid-template-columns: 1fr;
+}
+.feed-grid--single .feed-card { min-height: 180px; }
+
+.commercial-queue-empty {
+  background: var(--card-2);
+  border: 1px dashed var(--border);
+  padding: 24px;
+  color: var(--text-3);
+  font-size: 12px;
+  text-align: center;
+  border-radius: 2px;
+}
+
+/* Sized commercial lift strip on hero + feed cards */
+.hero-card-lift,
+.feed-card-lift {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 10px;
+  background: rgba(0, 175, 160, 0.07);
+  border-left: 2px solid var(--green);
+  border-radius: 2px;
+  font-family: var(--mono);
+  font-size: 10px;
+  margin-top: 6px;
+  width: fit-content;
+}
+.hero-card-lift-label,
+.feed-card-lift-label {
+  color: var(--text-3);
+  font-size: 9px;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+}
+.hero-card-lift-value,
+.feed-card-lift-value {
+  color: var(--green);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.hero-card-lift-sub,
+.feed-card-lift-sub {
+  color: var(--text-3);
+  font-size: 9px;
+  letter-spacing: 0.4px;
+}
 """
 
 
@@ -757,12 +948,23 @@ def render_masthead() -> str:
 </div>"""
 
 
-def render_hero(top_signal: dict) -> str:
-    """The top-of-feed urgency card — highest-severity flagged signal."""
+def render_hero(top_signal: dict, lens: str = "compliance") -> str:
+    """The top-of-feed urgency card.
+
+    HOL-55 — `lens` chooses the dimension that drives the tier badge:
+      "compliance" → action_tier (current behaviour; what CRO sees)
+      "commercial" → value_tier (what CCO/COO sees)
+    Sized lift line surfaces under the summary when engine has it."""
     pack = top_signal["pack"]
     cs   = top_signal["cell_score"]
-    tier = cs.action_tier
-    color = _ACTION_COLORS.get(tier, "var(--amber)")
+    if lens == "commercial":
+        tier = cs.value.tier
+        color = _VALUE_COLORS.get(tier, "var(--green)")
+        tier_dim = "value"
+    else:
+        tier = cs.action_tier
+        color = _ACTION_COLORS.get(tier, "var(--amber)")
+        tier_dim = "action"
     # PR-panel fix (Torvalds + van Rossum): all engine free-text gets
     # html.escape() at the interpolation boundary before f-stringing into
     # the DOM. The engine doesn't return markup today, but this is a
@@ -798,20 +1000,35 @@ def render_hero(top_signal: dict) -> str:
     # HOL-24 — delta meta: confidence chip + time-since-surfaced + tier-change + click preview
     delta = card_delta(pack["meta"]["pack_name"])
     preview_text = f"{delta['n_findings']} sub-findings · open in Workspace"
+    # HOL-55 — sized lift on the hero too. Renders above CTA so it's the
+    # last thing the eye sees before the click target.
+    lift_label = _format_lift_gbp_home(
+        getattr(cs.value, "estimated_monthly_lift_gbp", None)
+    )
+    hero_lift_html = (
+        f'<div class="hero-card-lift">'
+        f'<span class="hero-card-lift-label">EST. LIFT</span>'
+        f'<span class="hero-card-lift-value">{lift_label}</span>'
+        f'<span class="hero-card-lift-sub">at observed conv. rates</span>'
+        f'</div>'
+        if lift_label else ""
+    )
+    tag_label = "OPPORTUNITY" if lens == "commercial" else "FLAGGED"
     return f"""
-<a class="hero-card" style="border-left-color:{color}; text-decoration:none; color:inherit;"
+<a class="hero-card hero-card--{lens}" style="border-left-color:{color}; text-decoration:none; color:inherit;"
    href="http://localhost:8504/" target="_blank">
   <div>
     <div class="hero-card-meta">
       <span class="hero-card-tier-badge" style="color:{color};">
-        {tooltip_token("action", tier)}
+        {tooltip_token(tier_dim, tier)}
       </span>
       {render_confidence_chip(delta)}
       {render_velocity_tag(delta)}
-      <span>FLAGGED · {journey}</span>
+      <span>{tag_label} · {journey}</span>
     </div>
     <div class="hero-card-headline">{headline}</div>
     <div class="hero-card-summary">{summary}</div>
+    {hero_lift_html}
     {render_delta_strip(delta, preview_text)}
   </div>
   <span class="hero-card-cta" data-tooltip="{provenance_tooltip}">INVESTIGATE →</span>
@@ -824,7 +1041,8 @@ def render_feed_card(*, tag: str, tag_color: str, headline: str, summary: str,
                      cta_label: str = "OPEN →", accent: str = "var(--border)",
                      delta: dict | None = None, preview_text: str = "",
                      suppress_change: bool = False,
-                     is_pending: bool = False) -> str:
+                     is_pending: bool = False,
+                     lift_label: str | None = None) -> str:
     """Generic feed card — reused for FLAGGED, AWAITING REVIEW, MLOPS.
 
     HOL-24: optional `delta` adds confidence chip beside tier badge AND
@@ -851,6 +1069,17 @@ def render_feed_card(*, tag: str, tag_color: str, headline: str, summary: str,
         '<span class="feed-card-held-tag">HELD · awaiting sign-off</span>'
         if is_pending else ""
     )
+    # HOL-55 — sized commercial lift strip when the pack carries one.
+    # Sits between summary and delta-strip so the £ figure is reachable
+    # before the audit metadata. Falls back silently when None.
+    lift_html = (
+        f'<div class="feed-card-lift">'
+        f'<span class="feed-card-lift-label">EST. LIFT</span>'
+        f'<span class="feed-card-lift-value">{lift_label}</span>'
+        f'<span class="feed-card-lift-sub">at observed conv. rates</span>'
+        f'</div>'
+        if lift_label else ""
+    )
     return f"""
 <a class="feed-card{pending_class}" style="border-left-color:{accent}; text-decoration:none; color:inherit;"
    href="http://localhost:8504/" target="_blank">
@@ -863,6 +1092,7 @@ def render_feed_card(*, tag: str, tag_color: str, headline: str, summary: str,
   </div>
   <div class="feed-card-headline">{headline}</div>
   <div class="feed-card-summary">{summary}</div>
+  {lift_html}
   {delta_html}
   <div class="feed-card-foot">
     <span>{meta_left}</span>
@@ -910,6 +1140,12 @@ def render_flagged_feed(flagged: list[dict], hero: dict) -> str:
         if len(summary) > 180:
             summary = summary[:177] + "…"
         preview = f"{delta['n_findings']} sub-findings"
+        # HOL-55 — even on the compliance lens, surface sized lift when the
+        # engine has it. ACUTE packs are often also COMMERCIAL-OPPORTUNITY
+        # on the Value axis (the load-bearing dual-lens case).
+        lift_label = _format_lift_gbp_home(
+            getattr(cs.value, "estimated_monthly_lift_gbp", None)
+        )
         cards.append(render_feed_card(
             tag="FLAGGED",
             tag_color="var(--red)" if tier == "ACUTE" else "var(--amber)",
@@ -924,18 +1160,99 @@ def render_flagged_feed(flagged: list[dict], hero: dict) -> str:
             delta=delta,
             preview_text=preview,
             suppress_change=suppress,
+            lift_label=lift_label,
         ))
     if not cards:
         return ""
     remaining = max(0, len(flagged) - 1 - len(cards))
     count_label = f"{remaining} more in pipeline" if remaining else "all surfaced"
     return f"""
-<section>
-  <div class="section-label">
-    Flagged signals
+<section class="home-queue home-queue--compliance">
+  <div class="section-label section-label--queue">
+    Compliance Escalations
+    <span class="section-label-sub">CRO lens · severity-sorted</span>
     <span class="section-label-count">{count_label}</span>
   </div>
-  <div class="feed-grid">{"".join(cards)}</div>
+  <div class="feed-grid feed-grid--single">{"".join(cards)}</div>
+</section>"""
+
+
+def render_commercial_queue(signals: list[dict], hero: dict | None) -> str:
+    """HOL-55 — Commercial Opportunities queue. Value-tier-sorted feed cards
+    answering the CCO/COO question. Each card carries sized monthly lift
+    where ARPU is configured for the journey. Falls back gracefully when
+    no commercial-tier packs are in the registry."""
+    if not signals:
+        return f"""
+<section class="home-queue home-queue--commercial">
+  <div class="section-label section-label--queue">
+    Commercial Opportunities
+    <span class="section-label-sub">CCO lens · value-sorted</span>
+    <span class="section-label-count">queue empty</span>
+  </div>
+  <div class="commercial-queue-empty">
+    No commercial-tier packs in registry. Run worked-example scenario or
+    ingest live signals to populate this lens.
+  </div>
+</section>"""
+
+    # Reuse the diversity selector — same shape of input dicts.
+    grid = select_flagged_grid(signals, hero, n=3) if hero else signals[:3]
+
+    cards: list[str] = []
+    for sig in grid:
+        pack = sig["pack"]
+        cs = sig["cell_score"]
+        value_tier = sig["value_tier"]
+        accent = _VALUE_COLORS.get(value_tier, "var(--green)")
+        journey = _e(cs.journey_id.replace("_", " · ").title())
+        signature = _e(cs.signature_id.replace("_", " "))
+        varied = summary_for(cs.signature_id, cs.diagnosis.diagnosis,
+                              pack["meta"]["pack_name"])
+        summary = varied if varied else _e(cs.placement_recommendation)
+        if len(summary) > 180:
+            summary = summary[:177] + "…"
+        delta = card_delta(pack["meta"]["pack_name"])
+        preview = f"{delta['n_findings']} sub-findings"
+        lift_label = _format_lift_gbp_home(sig.get("lift_gbp"))
+        cards.append(render_feed_card(
+            tag="OPPORTUNITY",
+            tag_color="var(--green)" if value_tier == "COMMERCIAL-OPPORTUNITY" else "var(--amber)",
+            headline=f"{journey} — {signature}",
+            summary=summary,
+            tier=value_tier,
+            tier_dim="value",
+            meta_left=f"sha:{short_hash(pack['sha256'])}",
+            meta_right=NOW,
+            cta_label="INVESTIGATE →",
+            accent=accent,
+            delta=delta,
+            preview_text=preview,
+            suppress_change=False,
+            lift_label=lift_label,
+        ))
+
+    # Total at-stake headline across the queue (sums sized lifts, ignoring None).
+    total_lift = sum(
+        s["lift_gbp"] for s in signals if s.get("lift_gbp") is not None
+    )
+    total_label = _format_lift_gbp_home(total_lift) if total_lift else None
+    remaining = max(0, len(signals) - len(cards))
+    count_label = (
+        f"~{total_label} total at stake · {remaining} more"
+        if total_label and remaining
+        else (f"~{total_label} total at stake" if total_label else
+              (f"{remaining} more in queue" if remaining else "all surfaced"))
+    )
+
+    return f"""
+<section class="home-queue home-queue--commercial">
+  <div class="section-label section-label--queue">
+    Commercial Opportunities
+    <span class="section-label-sub">CCO lens · value-sorted</span>
+    <span class="section-label-count">{count_label}</span>
+  </div>
+  <div class="feed-grid feed-grid--single">{"".join(cards)}</div>
 </section>"""
 
 
@@ -1007,12 +1324,48 @@ def render_mlops_alerts(items: list[dict]) -> str:
 def render_page() -> str:
     packs = discover_packs()
     flagged = collect_flagged_signals(packs)
+    commercial = collect_commercial_signals(packs)
 
-    sections = []
-    if flagged:
-        hero = flagged[0]
-        sections.append(render_hero(hero))
-        sections.append(render_flagged_feed(flagged, hero))
+    sections: list[str] = []
+    # HOL-55 — dual-hero. Left = compliance lens (severity-sorted). Right =
+    # commercial lens (value-sorted, sized lift first). Both load on first
+    # paint so a CCO and CRO both see their entry point without filtering.
+    compliance_hero = flagged[0] if flagged else None
+    commercial_hero = commercial[0] if commercial else None
+    if compliance_hero or commercial_hero:
+        left_block = (
+            f'<div class="dual-hero-cell">'
+            f'<div class="dual-hero-label">'
+            f'COMPLIANCE ESCALATIONS '
+            f'<span class="dual-hero-label-sub">CRO lens · severity-sorted</span>'
+            f'</div>'
+            f'{render_hero(compliance_hero, lens="compliance") if compliance_hero else ""}'
+            f'</div>'
+        )
+        right_block = (
+            f'<div class="dual-hero-cell">'
+            f'<div class="dual-hero-label">'
+            f'COMMERCIAL OPPORTUNITIES '
+            f'<span class="dual-hero-label-sub">CCO lens · value-sorted</span>'
+            f'</div>'
+            f'{render_hero(commercial_hero, lens="commercial") if commercial_hero else ""}'
+            f'</div>'
+        )
+        sections.append(
+            f'<section class="dual-hero">{left_block}{right_block}</section>'
+        )
+
+    # HOL-55 — dual queue below the hero. Same split: compliance left,
+    # commercial right. Stacks to 1 column on narrow viewports via CSS.
+    queues: list[str] = []
+    if flagged and compliance_hero:
+        queues.append(render_flagged_feed(flagged, compliance_hero))
+    queues.append(render_commercial_queue(commercial, commercial_hero))
+    if queues:
+        sections.append(
+            f'<section class="dual-queue">{"".join(queues)}</section>'
+        )
+
     sections.append(render_awaiting_review(_STUB_AWAITING_REVIEW))
     sections.append(render_mlops_alerts(_STUB_MLOPS_ALERTS))
 
