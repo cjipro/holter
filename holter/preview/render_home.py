@@ -601,6 +601,30 @@ a { color: var(--blue); text-decoration: none; }
 }
 .feed-card-cta:hover { color: var(--teal); }
 
+/* HOL-28 — AWAITING REVIEW pending state. Held packs must not read as
+   live signals (Vinh). Dashed left rail + small HELD tag + slight
+   opacity reduction so the card recedes from the FLAGGED grid weight. */
+.feed-card.is-pending {
+  border-left-style: dashed !important;
+  border-left-width: 2px !important;
+  opacity: 0.92;
+  background: linear-gradient(180deg, var(--card-2), color-mix(in srgb, var(--card-2) 70%, var(--bg)));
+}
+.feed-card.is-pending .feed-card-tag {
+  opacity: 0.7;
+}
+.feed-card-held-tag {
+  margin-left: auto;
+  font-family: var(--mono); font-weight: 800;
+  font-size: 9px; letter-spacing: 1.4px;
+  color: var(--text-3);
+  background: var(--bg-strip);
+  border: 1px dashed var(--text-3);
+  padding: 2px 7px;
+  border-radius: 2px;
+  text-transform: uppercase;
+}
+
 /* HOL-24 — confidence chip + delta strip */
 .confidence-chip {
   font-family: var(--mono); font-weight: 800;
@@ -737,7 +761,8 @@ def render_feed_card(*, tag: str, tag_color: str, headline: str, summary: str,
                      meta_left: str = "", meta_right: str = "",
                      cta_label: str = "OPEN →", accent: str = "var(--border)",
                      delta: dict | None = None, preview_text: str = "",
-                     suppress_change: bool = False) -> str:
+                     suppress_change: bool = False,
+                     is_pending: bool = False) -> str:
     """Generic feed card — reused for FLAGGED, AWAITING REVIEW, MLOPS.
 
     HOL-24: optional `delta` adds confidence chip beside tier badge AND
@@ -756,13 +781,20 @@ def render_feed_card(*, tag: str, tag_color: str, headline: str, summary: str,
         render_delta_strip(delta, preview_text, suppress_change=suppress_change)
         if delta else ""
     )
+    # HOL-28 — pending state: dashed left rail + HELD tag in top-right
+    pending_class = " is-pending" if is_pending else ""
+    held_tag = (
+        '<span class="feed-card-held-tag">HELD · awaiting sign-off</span>'
+        if is_pending else ""
+    )
     return f"""
-<a class="feed-card" style="border-left-color:{accent}; text-decoration:none; color:inherit;"
+<a class="feed-card{pending_class}" style="border-left-color:{accent}; text-decoration:none; color:inherit;"
    href="http://localhost:8504/" target="_blank">
   <div class="feed-card-meta">
     <span class="feed-card-tag" style="color:{tag_color};">{tag}</span>
     {confidence_html}
     {tier_html}
+    {held_tag}
   </div>
   <div class="feed-card-headline">{headline}</div>
   <div class="feed-card-summary">{summary}</div>
@@ -858,6 +890,7 @@ def render_awaiting_review(items: list[dict]) -> str:
             accent="var(--teal)",
             delta=delta,
             preview_text="1 reviewer assigned · fairness sign-off required",
+            is_pending=True,  # HOL-28 — held packs render with pending wash
         ))
     return f"""
 <section>
