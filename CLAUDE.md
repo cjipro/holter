@@ -2,6 +2,30 @@
 
 This file provides guidance to Claude Code when working in this repository.
 
+## ⚠️ Load-bearing framing — read first (corrected 2026-05-19 EOD)
+
+**Pulse IS a commercial-value engine. Consumer Duty is the moat. Governance is the audit trail.** That ordering is load-bearing. When describing Pulse to anyone — CEO, prospect, regulator, engineer, internal teammate — **always lead with commercial value.** Never lead with governance/compliance/MRM. Full rule in memory: [[commercial-value-first]] and [[dont-lead-with-governance]].
+
+**The one-line statement (when asked "what is Pulse?"):**
+> Pulse finds where customer-experience friction is costing the bank money — and continuously evidences that fixing it improves outcomes for the customer, not just the P&L.
+
+**Failure mode to avoid:** the codebase has lots of governance machinery (lineage, attestation, MRM panes). The machinery is correctly built — but it's plumbing for the commercial play, not the play itself. Surfaces should answer the CCO/COO question ("where should we invest in journey changes?") first, the CRO question ("is this defensible?") second.
+
+**Load-bearing action-tier cells:**
+- `COMMERCIAL-OPPORTUNITY` — high value, low risk → product team owns this, ship it. *This is where the money is.*
+- `REGULATORY-FLAG` — low value, high risk → compliance owns this.
+- `ACUTE` — high value, high risk → C-suite escalation.
+
+A surface that does not prominently surface `COMMERCIAL-OPPORTUNITY` is failing the framing.
+
+## 🎯 Next session entry point (set 2026-05-19 EOD)
+
+**Starting question:** *"If Holter interface answers the commercial value question."*
+
+Audit HOL-3 Workspace · HOL-4 Pulse Home · HOL-6 MLOps Console against the commercial-value lens before any new build work. The 3 surfaces were designed with panels weighted toward decision-intelligence / governance / dashboard design — none of which would have flagged "Value tier is buried" as a critique. Likely findings + audit-question framework in memory: [[next-session-commercial-audit]].
+
+Don't skip the re-read. Don't repeat governance-led framing in any user-facing communication during the audit.
+
 ## Project Identity
 
 - **Codename:** Holter (after Norman Holter, inventor of the wearable continuous ECG monitor, 1949)
