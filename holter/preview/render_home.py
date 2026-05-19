@@ -80,24 +80,51 @@ def collect_flagged_signals(packs: list[dict]) -> list[dict]:
 
 
 def select_flagged_grid(flagged: list[dict], hero: dict, n: int = 3) -> list[dict]:
-    """HOL-25: deduplicate FLAGGED grid against hero's journey.
+    """Pick N grid cards that diversify across BOTH journey AND signature class.
 
-    Selection logic:
-      1. Exclude the hero pack itself
-      2. Prefer breadth-first by journey (one card per journey before doubling up)
-      3. Among same-journey candidates, take the highest-severity one
-      4. Hero's journey can still appear ONCE if there are too few other journeys
+    HOL-25 introduced journey diversity. HOL-29 extends to signature diversity
+    so the per-(signature × diagnosis) summary templates actually vary across
+    the visible cards (Boykis: "all 3 FLAGGED cards happen to be the same
+    (signature × diagnosis) combo, so the variation doesn't fire here").
+
+    Selection passes:
+      1. Skip hero pack; skip hero journey; pick ≤1 card per signature, ≤1 per
+         journey — forces signature diversity at the cost of skipping some
+         high-severity packs that would otherwise stack 3-in-a-row of one signature
+      2. Fill with journey-diverse cards (allow signature repeats)
+      3. Fill with anything left
     """
     hero_pack_name = hero["pack"]["meta"]["pack_name"]
     hero_journey = hero["journey"]
+    hero_signature = hero["cell_score"].signature_id
     seen_journeys: set[str] = set()
+    # Cap each signature at 1 occurrence including hero's so the grid
+    # diversifies AWAY from whatever the hero is.
+    sig_count: dict[str, int] = {hero_signature: 1}
     out: list[dict] = []
 
-    # Pass 1: highest-severity card from each non-hero journey
+    # Pass 1: breadth-first by journey AND cap each signature at 1
     for sig in flagged:
         if sig["pack"]["meta"]["pack_name"] == hero_pack_name:
             continue
         if sig["journey"] == hero_journey:
+            continue
+        if sig["journey"] in seen_journeys:
+            continue
+        sigid = sig["cell_score"].signature_id
+        if sig_count.get(sigid, 0) >= 1:
+            continue
+        seen_journeys.add(sig["journey"])
+        sig_count[sigid] = sig_count.get(sigid, 0) + 1
+        out.append(sig)
+        if len(out) >= n:
+            return out
+
+    # Pass 2: breadth-first by journey (allow signature repeats)
+    for sig in flagged:
+        if sig["pack"]["meta"]["pack_name"] == hero_pack_name:
+            continue
+        if sig in out:
             continue
         if sig["journey"] in seen_journeys:
             continue
@@ -106,7 +133,7 @@ def select_flagged_grid(flagged: list[dict], hero: dict, n: int = 3) -> list[dic
         if len(out) >= n:
             return out
 
-    # Pass 2: fill remaining slots with any unseen card (still skipping hero pack)
+    # Pass 3: fill remaining slots with any unseen card
     for sig in flagged:
         if sig["pack"]["meta"]["pack_name"] == hero_pack_name:
             continue
