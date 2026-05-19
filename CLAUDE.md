@@ -279,29 +279,31 @@ Three panels × three model classes × three named experts per panel = **9 fresh
 |---|---|---|---|---|
 | R1 (baseline) | 6.0 | 7.17 | 6.0 | 6.39 |
 | R2 (after HOL-24/25/26) | **8.33** | **8.33** | 7.17 | **7.94** |
+| R3 (after polish-pass HOL-27/28/29/30) | **8.67** | **8.67** | **7.5** | **8.28** |
 
-Net uplift R1 → R2: **+1.55** — larger than HOL-3's R1→R2 (+0.83). HOL-3 reached 7.89 final after 3 rounds; HOL-4 reached 7.94 after 2. The R1 critiques converted to ticket work unusually cleanly because the surface had fewer load-bearing dimensions to balance.
+Net uplift R1 → R3: **+1.89** — larger than HOL-3's R1→R3 (+1.17). HOL-3 reached 7.89 final after 3 rounds; HOL-4 reached **8.28** after 3 rounds. The R1 critiques converted to ticket work unusually cleanly because the surface had fewer load-bearing dimensions to balance.
 
 **Notable voice records on HOL-4:**
-- Tetlock R1 → R2: 5 → 8 (+3) — largest single-voice uplift across all panels HOL-3+HOL-4 combined
-- Krug R2: 9/10 — first 9 from any voice in any panel
-
-Polish-pass on top of R2 (HOL-27/28/29/30) addressed remaining residuals; cross-panel consensus said "lock-ready or one-ticket-from-locked," polish-pass closed that one ticket × 4 voices.
+- Tetlock R1 → R2: 5 → 8 (+3) — largest single-voice uplift in any round across all panels HOL-3+HOL-4 combined
+- Boykis R1 → R3: 6 → 9 (+3) — largest total trajectory across all 18 voice-panel-rounds
+- Krug R2 + R3: 9/10 held — first 9 from any voice in any panel
+- **R3: three voices at 9/10 simultaneously** (Boykis, Vinh, Krug) — first time
+- **R3: UNANIMOUS "LOCK" verdict** across all 3 panels — first time across both HOL-3 and HOL-4 panel arcs (HOL-3 R3 had Haiku saying "don't lock yet")
 
 #### Holter scorecard (5 weighted dimensions, regulated-banking weights)
 
-Same framework as HOL-3 (see [[holter-scorecard]]). HOL-4 baseline scores (post polish-pass, pre any further panels):
+Same framework as HOL-3 (see [[holter-scorecard]]). HOL-4 R3 scorecard (post-R3 panel validation, 2026-05-19):
 
 | # | Dimension | Score | Weight | Weighted |
 |---|---|---|---|---|
-| 1 | Verifiable transparency | 8.0 | 30% | 2.40 |
-| 2 | Cognitive load management | 8.5 | 15% | 1.275 |
-| 3 | Decision-action coupling | 8.0 | 25% | 2.00 |
+| 1 | Verifiable transparency | 8.5 | 30% | 2.55 |
+| 2 | Cognitive load management | 9.0 | 15% | 1.35 |
+| 3 | Decision-action coupling | 8.5 | 25% | 2.125 |
 | 4 | Fairness + bias surfacing | 7.5 | 15% | 1.125 |
 | 5 | Regulator survival (Section 166) | 7.0 | 15% | 1.05 |
-| | **Composite** | **7.85** | | |
+| | **Composite** | **8.20** | | |
 
-Composite +0.45 above HOL-3 (7.40). Driven by: stronger transparency (confidence chip + velocity tag + provenance-tooltip) and stronger decision-action coupling (CTA verb differentiation + click preview + held-state semantics). Regulator survival flat — same gap as HOL-3 (decision-date / override-with-reason — features land at the engine-side via HOL-23-equivalent for Home).
+Composite +0.80 above HOL-3 (7.40) and +0.35 above the pre-R3 estimate (7.85). Driven by: stronger transparency (confidence chip + velocity tag + provenance-tooltip), stronger decision-action coupling (CTA verb differentiation + click preview + held-state semantics), and lifted cognitive load (Krug 9/10 + Vinh 9/10 + Boykis 9/10 — three voices at ceiling). Regulator survival flat — same gap as HOL-3 (decision-date / override-with-reason — engine schema work tracked under [[HOL-33]]).
 
 #### Ticket spine — HOL-4 build + remediation (SHIPPED 2026-05-19)
 
@@ -316,17 +318,20 @@ Composite +0.45 above HOL-3 (7.40). Driven by: stronger transparency (confidence
 | [HOL-28](https://cjipro.atlassian.net/browse/HOL-28) | R2→polish | Vinh — AWAITING REVIEW pending-state visual wash | `3ac56d2` |
 | [HOL-27](https://cjipro.atlassian.net/browse/HOL-27) | R2→polish | Klein — categorical velocity tag (JUST HOT / STEADY / COOLING / PLATEAU) | `cfd3b6a` |
 
-#### Residual backlog (NOT lock-blockers)
+#### Residual backlog (NOT lock-blockers — filed post-R3)
 
-| From | Voice | Item | Type |
+| Key | Voice | Item | Type |
 |---|---|---|---|
-| R2 | Tetlock | Confidence band + weekly base rate | Engine-side (PULSE schema work) |
-| R2 | Ng | Preserve card-identity through Workspace handoff | Cross-surface routing |
-| R3 (deferred) | — | Real-analyst task-completion study | Validation arc, not design |
+| [HOL-31](https://cjipro.atlassian.net/browse/HOL-31) | McKinney | Text-floor for sub-finding count + metadata-strip responsive sizing | Polish (Home a11y) |
+| [HOL-32](https://cjipro.atlassian.net/browse/HOL-32) | Ng | Preserve card-identity Home → Workspace handoff (`?pack=` param) | Cross-surface routing |
+| [HOL-33](https://cjipro.atlassian.net/browse/HOL-33) | Tetlock | Render confidence band + weekly base rate (blocked on PULSE schema work) | UI-blocked-on-engine |
+| (deferred) | — | Real-analyst task-completion study | Validation arc, not design |
 
 #### Missing validation layer
 
-Same caveat as HOL-3: voice panels test design coherence, not real-user task completion. The 9-voice × 2-round × polish-pass arc has hit its ceiling on this surface. Re-opening for panel re-scoring without (a) the 2 engine-side residuals shipped OR (b) real-analyst study findings is not earning more signal.
+Same caveat as HOL-3: voice panels test design coherence, not real-user task completion. The 9-voice × 3-round arc has hit its ceiling on this surface. Re-opening for panel re-scoring without (a) ≥2 of the residual tickets shipped OR (b) real-analyst study findings is not earning more signal.
+
+**Lock is unanimous** — Opus, Sonnet, AND Haiku all explicitly verdicted "LOCK" at R3. First unanimous lock across both HOL-3 and HOL-4 panel arcs.
 
 ### Ticket spine — Value + Risk + Diagnosis methodology architecture (SHIPPED 2026-05-18)
 
