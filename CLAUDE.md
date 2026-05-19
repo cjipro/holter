@@ -92,11 +92,19 @@ work-tracking level, not the codebase level.
 
 ### Numbering
 
-- **PULSE-1..91** (current high water): includes the v1 design spine
-  (PULSE-87 schema / PULSE-88 FrictionBench / PULSE-89 lineage+synthesis) and
-  the build infra that brought Holter into existence (PULSE-90 scaffolding /
-  PULSE-91 migration). PULSE-92 = next engine ticket.
-- **HOL-1** = UI framework decision panel (foundational). HOL-2 = next UI/build ticket.
+- **PULSE-1..106** (current high water as of 2026-05-19): v1 design spine
+  (PULSE-87 schema / PULSE-88 FrictionBench / PULSE-89 lineage+synthesis),
+  build infra that brought Holter into existence (PULSE-90 scaffolding /
+  PULSE-91 migration), and the v2 spine shipped 2026-05-18
+  (PULSE-99..106: Risk methodology, Chronicle, Value methodology, bank_policy
+  contract, hypothesis validator, 12-pack backfill, Diagnosis methodology,
+  Agentic AI placement worked example). **PULSE-107 = next engine ticket.**
+- **HOL-1..38** (current high water as of 2026-05-19). Recent activity:
+  HOL-12..17 shipped (HOL-3 Workspace design-panel arc, design-locked
+  2026-05-19); HOL-18..23 filed as Workspace residual backlog; HOL-4,
+  HOL-24..30 shipped (HOL-4 Pulse Home design-panel arc, design-locked
+  2026-05-19); HOL-31..33 filed as Home residual backlog; HOL-34..38 filed
+  as PR-panel structural backlog. **HOL-39 = next UI/build ticket.**
 
 ## Locked decisions
 
@@ -120,20 +128,22 @@ bank env validated framework candidates as env-present.
 
 **Five surfaces (one Python stack family, all from APPROVED_LIBRARIES.md):**
 
-| # | Surface | Stack | Audience | Ticket |
-|---|---|---|---|---|
-| 1 | Pulse Home | Streamlit | All roles, entry feed | HOL-4 |
-| 2 | Investigation Workspace | Panel + HoloViz | Investigation consumer; three-altitude single surface | HOL-3 |
-| 3 | Pulse Monitor | Panel + Bokeh | Day-to-day analysts; chart-compressed Journey rendering | HOL-7 (gated) |
-| 4 | MLOps Console | Streamlit + FastAPI | ML eng + MRM; drift, fairness, lineage, synthesis governance | HOL-6 |
-| 5 | Pulse Platform API | FastAPI + Pydantic | Other tools (Tableau, Databricks Apps, bank portals) | HOL-5 |
+| # | Surface | Stack | Audience | Ticket | State |
+|---|---|---|---|---|---|
+| 1 | Pulse Home | static HTML (specced Streamlit; built HTML for fast iteration) | All roles, entry feed | HOL-4 | **✅ DESIGN-LOCKED 2026-05-19** (live :8505) |
+| 2 | Investigation Workspace | static HTML (specced Panel+HoloViz; built HTML) | Investigation consumer; three-altitude single surface | HOL-3 | **✅ DESIGN-LOCKED 2026-05-19** (live :8504) |
+| 3 | Pulse Monitor | Panel + Bokeh | Day-to-day analysts; chart-compressed Journey rendering | HOL-7 | 🔒 Gated on registry ≥40 packs (currently 13) |
+| 4 | MLOps Console | Streamlit + FastAPI | ML eng + MRM; drift, fairness, lineage, synthesis governance | HOL-6 | ⏳ **Next build** |
+| 5 | Pulse Platform API | FastAPI + Pydantic | Other tools (Tableau, Databricks Apps, bank portals) | HOL-5 | ⏳ Programmatic, no UI |
 
 **Dashboard-tension resolution:** *rendering is the variable; investigation
 is the invariant.* Surface 3 is not a fourth altitude or a separate product —
 it is the Journey altitude rendered chart-first instead of narrative-first,
 with lineage hash + confidence band + Designed Ceiling on every chart.
 
-**Build order:** HOL-3 (Workspace) → HOL-4 (Home) → HOL-5 (API) → HOL-6 (MLOps) → HOL-7 (Monitor). HOL-8 (pyproject 3.11 tightening) runs in parallel.
+**Build order:** ~~HOL-3 (Workspace)~~ ✅ → ~~HOL-4 (Home)~~ ✅ → **HOL-6 (MLOps)** ← next → HOL-5 (API) → HOL-7 (Monitor — gated). HOL-8 (pyproject 3.11 tightening) runs in parallel.
+
+**Pre-condition for HOL-6:** ship [HOL-35](https://cjipro.atlassian.net/browse/HOL-35) (`_shared.py` extraction) first — Cannon's PR-panel ruling. The third renderer must NOT import from either of the first two.
 
 **Hard launch gate on HOL-7:** decision-packs registry must have ≥40 templates covering FrictionBench 12-cell × multiple signatures. **12 cells now deep** (3 showcase + 9 fan-out done 2026-05-17/18); 13 packs total including the `journey_friction` test fixture. ~27 more cohort/remediation variant packs to clear the 40-floor. Calendar dates do not unlock this; registry depth does.
 
@@ -153,6 +163,31 @@ Canvas slots split into three classes:
 - `pulse/risk/` — Risk tier from friction signature + regulatory taxonomy match + bank-policy thresholds + Chronicle precedent matches
 
 **Value × Risk 2×2 → CLARK-style Action tier:** `ACUTE / REGULATORY-FLAG / COMMERCIAL-OPPORTUNITY / WATCH / NOMINAL`. Load-bearing cell is `REGULATORY-FLAG` (high risk, low value — "not just a value question").
+
+### Process artifacts — review discipline established 2026-05-19
+
+Three reusable patterns established during the HOL-3 + HOL-4 design-lock arc. **Apply on every subsequent surface and every significant push.**
+
+#### Design-panel review (3×3×3 voice methodology)
+
+Run for any new surface or any major surface revision. Three model classes (Opus + Sonnet + Haiku) × three named expert voices per panel (Data Product + Decision Intelligence + UX) = **9 voices per round**. Rounds repeat until diminishing returns (R2→R3 delta < +0.3 mean OR at least one panel says "lock and ship"). Different roster per surface — credibility comes from voice diversity across milestones.
+
+See [[panel-review-process]] memory for the methodology and [[holter-scorecard]] for the 5-dimension weighted score framework that consumes panel output. HOL-3 hit 7.40 composite / 7.89 panel mean in 3 rounds; HOL-4 hit **8.20 / 8.28** in 3 rounds (unanimous lock — first across both arcs). Rosters used so far:
+
+| Surface | Opus | Sonnet | Haiku |
+|---|---|---|---|
+| HOL-3 | DJ Patil · Cassie Kozyrkov · Jakob Nielsen | Hilary Mason · Lorien Pratt · Edward Tufte | Eric Colson · Annie Duke · Stephen Few |
+| HOL-4 | Vicki Boykis · Philip Tetlock · Steve Krug | Wes McKinney · Nate Silver · Khoi Vinh | Andrew Ng · Gary Klein · Erik Spiekermann |
+
+#### PR-panel review (pre-push code-review gate)
+
+Run before any push of ≥10 commits to private remote. Same 3×3 structure but with code-review voices instead of design voices. See [[pr-panel-process]] memory. Caught a pre-existing real-bank name leak on 2026-05-19 that would have hand-carried unchanged to the work environment.
+
+Roster used so far: Linus Torvalds · Rich Hickey · Brian Kernighan (Opus) · Guido van Rossum · Raymond Hettinger · Brett Cannon (Sonnet) · Kent Beck · Martin Fowler · Sandi Metz (Haiku).
+
+#### Fix-first discipline
+
+When PR-panel says FIX FIRST: address truly bug-class items immediately (correctness, leaks, hygiene); file structural items as backlog tickets that explicitly cite the dissenting voice. Hickey's R2 rule: "file it or it dies." HOL-34..38 are the canonical examples — 5 structural refactors filed with named-voice attribution so the debt is tracked, not forgotten.
 
 ### MIL briefing as canonical Workspace aesthetic (LOCKED 2026-05-18)
 
