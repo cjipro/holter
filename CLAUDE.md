@@ -252,6 +252,82 @@ Voice panels test design coherence. They do **not** test whether an investigator
 
 **Do not re-open the Workspace surface for panel re-scoring without (a) shipping ≥3 of the residual tickets, OR (b) a real-analyst study with new findings.** Synthetic expert voices have hit their ceiling on this surface.
 
+### HOL-4 Pulse Home — DESIGN-LOCKED 2026-05-19
+
+The first-of-five surface (`holter/preview/render_home.py`, served at `:8505`) — "first-30-seconds" entry feed for all roles. Built same-day as HOL-3 lock; locked after 2 rounds of panel review + polish-pass. Per HOL-1 lock: news-portal aesthetic, distinct from Workspace box discipline.
+
+**Layout (locked):**
+- Sticky top nav (shared identity strip with Workspace — CJI PULSE logo + utility cluster + `Aa` glossary panel)
+- Mono-uppercase nameplate masthead (demoted from serif per Spiekermann — HOL-26)
+- **Hero card**: full-width, tier-railed, serif headline (single serif lead per Economist principle), signature-led summary, confidence chip + velocity tag + delta strip, INVESTIGATE → with provenance tooltip
+- **FLAGGED SIGNALS grid**: 3 cards selected for journey + signature-class diversity (`select_flagged_grid()` runs 3 passes — signature cap + journey breadth + fallback). Each card carries confidence + velocity + tier-change (dedup'd if duplicate) + click preview
+- **AWAITING REVIEW**: dashed-rail "held" state with `HELD · awaiting sign-off` tag — semantic break from live FLAGGED cards (HOL-28)
+- **MLOPS ALERTS**: solid-rail live alerts, distinct visual weight from held
+
+**HOL-4 spec negative scope respected (verification = absence):**
+- NO KPI tiles · NO trend charts · NO sidebar / navigation menu · NO personalisation
+
+**Departure from HOL-4 spec (Streamlit):** built as static HTML + render + serve pattern matching `serve_holter.py`. Rationale: rapid screenshot iteration proven on HOL-3 (see [[panel-review-process]]). If pure-Streamlit production shipping wanted later, that's a separate ticket — the design language and data flow port cleanly.
+
+**Universal pattern reused from Workspace:** `STATUS_GLOSSARY` + `tooltip_token()` + `Aa` panel imported directly from `render_holter.py` — single source of truth.
+
+#### Panel review process (lock justification)
+
+Three panels × three model classes × three named experts per panel = **9 fresh voices** (no overlap with HOL-3 voices per the [[panel-review-process]] memory). Two rounds + a polish-pass. Hit lock at R2 + polish.
+
+| Round | Opus mean | Sonnet mean | Haiku mean | All-9 mean |
+|---|---|---|---|---|
+| R1 (baseline) | 6.0 | 7.17 | 6.0 | 6.39 |
+| R2 (after HOL-24/25/26) | **8.33** | **8.33** | 7.17 | **7.94** |
+
+Net uplift R1 → R2: **+1.55** — larger than HOL-3's R1→R2 (+0.83). HOL-3 reached 7.89 final after 3 rounds; HOL-4 reached 7.94 after 2. The R1 critiques converted to ticket work unusually cleanly because the surface had fewer load-bearing dimensions to balance.
+
+**Notable voice records on HOL-4:**
+- Tetlock R1 → R2: 5 → 8 (+3) — largest single-voice uplift across all panels HOL-3+HOL-4 combined
+- Krug R2: 9/10 — first 9 from any voice in any panel
+
+Polish-pass on top of R2 (HOL-27/28/29/30) addressed remaining residuals; cross-panel consensus said "lock-ready or one-ticket-from-locked," polish-pass closed that one ticket × 4 voices.
+
+#### Holter scorecard (5 weighted dimensions, regulated-banking weights)
+
+Same framework as HOL-3 (see [[holter-scorecard]]). HOL-4 baseline scores (post polish-pass, pre any further panels):
+
+| # | Dimension | Score | Weight | Weighted |
+|---|---|---|---|---|
+| 1 | Verifiable transparency | 8.0 | 30% | 2.40 |
+| 2 | Cognitive load management | 8.5 | 15% | 1.275 |
+| 3 | Decision-action coupling | 8.0 | 25% | 2.00 |
+| 4 | Fairness + bias surfacing | 7.5 | 15% | 1.125 |
+| 5 | Regulator survival (Section 166) | 7.0 | 15% | 1.05 |
+| | **Composite** | **7.85** | | |
+
+Composite +0.45 above HOL-3 (7.40). Driven by: stronger transparency (confidence chip + velocity tag + provenance-tooltip) and stronger decision-action coupling (CTA verb differentiation + click preview + held-state semantics). Regulator survival flat — same gap as HOL-3 (decision-date / override-with-reason — features land at the engine-side via HOL-23-equivalent for Home).
+
+#### Ticket spine — HOL-4 build + remediation (SHIPPED 2026-05-19)
+
+| Key | Round | Voice / Job | Commit |
+|---|---|---|---|
+| [HOL-4](https://cjipro.atlassian.net/browse/HOL-4) | v0 | Initial port (hero + flagged feed + stub awaiting + stub MLOps) | `7938577` |
+| [HOL-25](https://cjipro.atlassian.net/browse/HOL-25) | R1→R2 | Boykis/Vinh/Krug/Ng/Klein — de-template (dedupe grid, varied summaries, kill slug breadcrumb) | `6e75752` |
+| [HOL-24](https://cjipro.atlassian.net/browse/HOL-24) | R1→R2 | Tetlock/Klein/Silver/McKinney/Vinh — per-card delta layer (confidence + time-since + tier-change + preview) | `69287ea` |
+| [HOL-26](https://cjipro.atlassian.net/browse/HOL-26) | R1→R2 | Spiekermann/Vinh — typography pass (single serif lead, contrast lift) | `c828dee` |
+| [HOL-29](https://cjipro.atlassian.net/browse/HOL-29) | R2→polish | Boykis — signature-class diversity in FLAGGED grid | `a19d863` |
+| [HOL-30](https://cjipro.atlassian.net/browse/HOL-30) | R2→polish | Silver — suppress duplicate tier-change chips across row | `4bc88ab` |
+| [HOL-28](https://cjipro.atlassian.net/browse/HOL-28) | R2→polish | Vinh — AWAITING REVIEW pending-state visual wash | `3ac56d2` |
+| [HOL-27](https://cjipro.atlassian.net/browse/HOL-27) | R2→polish | Klein — categorical velocity tag (JUST HOT / STEADY / COOLING / PLATEAU) | `cfd3b6a` |
+
+#### Residual backlog (NOT lock-blockers)
+
+| From | Voice | Item | Type |
+|---|---|---|---|
+| R2 | Tetlock | Confidence band + weekly base rate | Engine-side (PULSE schema work) |
+| R2 | Ng | Preserve card-identity through Workspace handoff | Cross-surface routing |
+| R3 (deferred) | — | Real-analyst task-completion study | Validation arc, not design |
+
+#### Missing validation layer
+
+Same caveat as HOL-3: voice panels test design coherence, not real-user task completion. The 9-voice × 2-round × polish-pass arc has hit its ceiling on this surface. Re-opening for panel re-scoring without (a) the 2 engine-side residuals shipped OR (b) real-analyst study findings is not earning more signal.
+
 ### Ticket spine — Value + Risk + Diagnosis methodology architecture (SHIPPED 2026-05-18)
 
 Full v2 design spine shipped end-to-end in one day. Filed dependency-ordered (no phases), built and closed in the order the graph allowed.
