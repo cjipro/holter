@@ -8,17 +8,18 @@
 
 ---
 
-## Status as of 2026-05-19
+## Status as of 2026-05-19 (end-of-day, post-HOL-6 R2 build)
 
 | | |
 |---|---|
 | Surfaces design-locked | **2 of 5** — HOL-3 Workspace (composite 7.40) · HOL-4 Pulse Home (composite 8.20) |
-| Surfaces v0 shipped, not yet locked | **1** — HOL-6 MLOps Console (composite pending design-panel) |
-| Surfaces remaining | HOL-5 Platform API · HOL-7 Pulse Monitor (gated) |
-| Pattern travel | Workspace primitives now consumed by HOL-4 AND HOL-6 → **two-hop travel** (one short of DHH's "3+ surfaces" rule for extraction-eligibility) |
-| Process artifacts in use | Design-panel review · PR-panel review · 5-dimension scorecard · fix-first discipline |
+| Surfaces v0+ shipped, not yet locked | **1** — HOL-6 MLOps Console (R1 5.67 → R2 6.50 → R3 panel mean tracking ≥7.5 for Opus sub-panel; full R3 mean lands when Sonnet + Haiku panels complete) |
+| Programmatic surface shipped | **1** — HOL-5 Platform API (FastAPI + Pydantic, 309 LOC at `5a5c638`) |
+| Surfaces remaining | HOL-7 Pulse Monitor (gated on registry ≥40 packs) |
+| Pattern travel | Workspace primitives now consumed by HOL-4 AND HOL-6 via `_shared.py` (HOL-35) → **clean three-hop travel via single source of truth** |
+| Process artifacts in use | Design-panel review (R1/R2/R3 cycles) · PR-panel review · 5-dimension scorecard · fix-first discipline |
 | Cross-panel verdict on Hodos extraction (2026-05-19) | 1 READY-with-conditions · 6 NEEDS WORK · 2 BAD CANDIDATE — consensus: **not yet, but primitives are real** |
-| Pre-extraction debt | **`render_holter.py` is now imported by 2 sibling renderers** — Cannon's condition for HOL-35 `_shared.py` extraction is now concrete, not theoretical. |
+| Pre-extraction debt — STATUS | **HOL-35 `_shared.py` extraction SHIPPED** — Cannon's condition met. `render_holter.py`, `render_home.py`, `render_mlops.py` all import primitives from `holter/preview/_shared.py` (single source of truth). The 3-renderer concern is resolved. |
 
 ---
 
@@ -97,7 +98,7 @@ These primitives have either travelled across surfaces (HOL-3 → HOL-4) or are 
 
 ## ⚠️ Candidate primitives — too fresh, need more data points
 
-These are pattern-shaped but have one consumer or fewer than one full surface of use. **Do not lift into Hodos yet** — they need HOL-6 (and probably HOL-5/7) to either confirm or invalidate.
+These are pattern-shaped but have one consumer or fewer than one full surface of use. **Do not lift into Hodos yet** — they need HOL-7 (or any subsequent surface) to either confirm or invalidate.
 
 | Candidate | Where | Status | Promotion condition |
 |---|---|---|---|
@@ -106,9 +107,24 @@ These are pattern-shaped but have one consumer or fewer than one full surface of
 | Velocity tag (JUST HOT / STEADY / COOLING / PLATEAU) | `render_home.py` `_classify_velocity()` + `render_velocity_tag()` | HOL-4 cards only | HOL-6/7 cards need the same tempo signal |
 | Decision Quality strip (Kozyrkov separation) | `render_holter.py` `body_quality_strip()` | HOL-3 Box 1 only | HOL-6 MLOps Console needs a decision-quality concept |
 | Confidence chip (HIGH/MEDIUM/LOW with score) | `render_home.py` `render_confidence_chip()` | HOL-4 only | HOL-6/7 surfaces both display confidence in the same form |
-| "What this means" synthesis line | `body_lines` callsites in HOL-3 + HOL-4 box bodies | 2 surfaces use it | One more surface confirms it's a discipline, not a coincidence |
-| Cross-surface routing (`?pack=` handoff) | NOT YET BUILT — [HOL-32](https://cjipro.atlassian.net/browse/HOL-32) | Backlog | The cross-surface contract is implemented |
-| Persistent glossary affordance (`<details>` in top nav) | `render_holter.py` + cross-imported into `render_home.py` | 2 surfaces share it via import | `_shared.py` extraction ([HOL-35](https://cjipro.atlassian.net/browse/HOL-35)) → both surfaces import from neutral source |
+| Persistent glossary affordance (`<details>` in top nav) | `_shared.py` (post HOL-35) | All 3 surfaces import from `_shared` | **PROMOTABLE to proven** — same shape consumed by HOL-3/4/6 |
+
+### NEW candidates introduced by HOL-6 R2 build (2026-05-19)
+
+These shipped in HOL-39..46. One consumer (HOL-6); need HOL-7 or any new surface to either confirm shape or invalidate. Lifted into `_shared.py` only after second consumer.
+
+| Candidate | Pattern | Where | Promotion condition |
+|---|---|---|---|
+| **Drill-through coupling (cell-id cross-pane filter)** | `data-cell-id` on every row across N panes + `.cell-row-highlighted` CSS + ~15 LOC JS click handler that toggles class on all matching rows. One click → cross-pane spotlight. | `render_mlops.py` HOL-39 (CSS in `_shared`-extension; JS in renderer) | Any other multi-pane surface uses the same `data-cell-id` discipline → lift the CSS + JS handler |
+| **Severity-gradient narrative** | `render_severity_narrative(severity, html)` returns `.mlops-narrative--{nominal/watch/escalate/acute}` block with proportional visual weight (NOMINAL: collapsed text, ACUTE: red rule + non-suppressible) | `render_mlops.py` HOL-40 | Workspace and Pulse Home haven't used severity-gradient yet — if HOL-7 adopts, promote |
+| **In-session event log (`window.holterEventLog`) + decision affordances** | 3-button cluster pattern (Attest/Challenge/Defer or Approve/Committee/Retrain) writes `{scope, decision, reviewer, timestamp}` to a shared browser-only log; visual state updates on click without engine round-trip | `render_mlops.py` HOL-42 + HOL-44 | Any other governance/review surface uses the same shape → lift the JS event-log + button pattern |
+| **Window scrubber `[7d][14d][30d]` + multi-pre-rendered SVG variants** | Pre-render N timeline-window variants server-side, wrap each `<svg data-window="Nd">`, CSS hides/shows based on `body[data-window]`, ~10 LOC JS to toggle. No re-render needed. | `render_mlops.py` HOL-43 | Pulse Monitor (HOL-7) needs same temporal scrubbing → lift the SVG-variant + CSS-toggle pattern |
+| **Lineage hash click-to-expand chain ancestry** | `.hash-link` anchor + collapsible `.hash-chain` block with 5-deep rows (sha → pipeline → dataset → date). Toggle on click; click anywhere else closes via event-stop. | `render_mlops.py` HOL-43 | Any surface that displays content-addressed artifacts → lift |
+| **Pane-scoped severity filter strip** | `render_filter_strip(scope, options)` helper renders [ALL][ACUTE only][≥ESCALATE] buttons; each row carries `data-severity` + `data-filter-scope`; JS hides via `.pane-row-hidden`. Severity-rank dict supports "≥ESCALATE" filter semantics. | `render_mlops.py` HOL-45 | Any surface with severity-classified rows → lift the helper + JS handler |
+| **Sortable table headers** | `th.sortable[data-sort-key]` + `data-sort-{key}` per row; click toggles asc/desc with ↕/↑/↓ indicators; numeric/string detection. ~25 LOC JS. | `render_mlops.py` HOL-45 | Any tabular display → lift |
+| **Threshold tooltip pattern (THRESHOLD_RULES dict)** | Plain-language rule string for every severity + status + metric, keyed by token. Surfaced as native `title` attr on `.threshold-token` (cursor:help + dotted underline). | `render_mlops.py` HOL-45 | Generic enough that any domain ships a rule dict → lift the dict pattern + CSS |
+| **Primary-KPI-with-secondary-annotation header** | When a chip-strip is competing-equal-weight, replace with `headline_stat_card` (already proven) + demote secondary counts into `meta_left`. Single dominant number drives the eye. | `render_mlops.py` HOL-46 (carryover from `headline_stat_card` which is already proven) | Pattern already proven; this is a *discipline rule*, not new code |
+| **Top-of-page decision frame** | Trigger sentence (severity tag + pack + delta + cohort floor) + 3-button decision cluster + session badge. Frame border-left colour mirrors severity. | `render_mlops.py` HOL-44 | If HOL-7 needs a "why are you here" framing on landing → promote |
 
 ---
 
@@ -159,17 +175,20 @@ These are arguably the *highest-leverage* foundations because they're already do
 
 ---
 
-## Extraction posture (recommended)
+## Extraction posture (recommended, updated 2026-05-19 end-of-day)
 
-Per the 2026-05-19 Hodos panel and DHH's "3+ surfaces" rule:
+Per the 2026-05-19 Hodos panel and DHH's "3+ surfaces" rule — **status changed during today's build**:
 
-1. **Do not extract today.** Holter at 2/5 surfaces hasn't proven the pattern enough.
-2. **Build HOL-6 next** (the explicit MLOps Console). After HOL-6 ships and design-locks, **refresh this document**:
-   - Promote candidates that recurred (HOL-6 used the same delta strip / velocity tag / etc.)
-   - Demote/remove candidates that HOL-6 didn't need
-   - Note new candidates HOL-6 invented
-3. **Build HOL-5 (API) or HOL-7 (Monitor) third** depending on which one is unblocked. Same refresh.
-4. **After 3rd surface design-locks**, the panel re-convenes with real data: "you now have 3 surfaces — has the pattern crystallised?" If yes, start the actual Hodos extraction conversation with this document as the starting kit.
+1. **Foundational primitives now meet DHH's 3-surface bar.** 4-layer box discipline · `render_box` + `body_*` family · `headline_*` vocabulary · CSS design-tokens · static-emit pattern · glossary infrastructure · sparkline SVG — all 7 consumed by HOL-3 AND HOL-4 AND HOL-6 via `_shared.py` (single source of truth post-HOL-35). **The foundational set is extraction-eligible.**
+2. **10 new candidates from HOL-6 R2 build are at single-consumer status.** Drill-through coupling · severity narrative · in-session event log + decision affordances · window scrubber · lineage hash chain expansion · pane-scoped filter strip · sortable table headers · threshold-tooltip pattern · primary-KPI discipline · top-of-page decision frame. These need HOL-7 (or any new surface) to either confirm shape or invalidate. **Do not extract these yet.**
+3. **HOL-5 Platform API is already shipped** — it's programmatic, not a renderer, so it doesn't consume the same UI primitives but it does consume the engine bridge (`discover_packs`, `headline_pack`). Engine-bridge primitives are now proven at 4 consumers (HOL-3, HOL-4, HOL-6, HOL-5 API) — extraction-eligible for those too.
+4. **Build HOL-7 (Pulse Monitor) next** when registry hits 40 packs. After HOL-7 ships and design-locks, **refresh this document again** — the 10 new HOL-6 candidates will either promote to extraction-eligible or be confirmed as MLOps-specific.
+5. **Hodos panel should re-convene** post-HOL-7 with three concrete decision streams:
+   - Lift the foundational 7 (proven across 3 surfaces) into a Hodos seed repo? **Now eligible.**
+   - Lift the engine-bridge primitives (proven across 4 consumers)? **Now eligible.**
+   - Lift the 10 HOL-6 candidates if HOL-7 used them? Per-candidate verdict at that time.
+
+Per the existing 2026-05-19 Hodos extraction panel verdict (1 READY-with-conditions · 6 NEEDS WORK · 2 BAD CANDIDATE), the consensus was "not yet, but primitives are real." Today's build confirms the second half of that sentence empirically. **The first-half "not yet" can be revisited — the panel should look at the foundational 7 separately from the new 10, because they're at different proof-of-stability levels.**
 
 Until then: **this document IS the answer to "are the foundations available?"** — yes, in the sections above, with the honesty about which are proven vs candidate vs domain-specific.
 
@@ -181,3 +200,8 @@ Until then: **this document IS the answer to "are the foundations available?"** 
 |---|---|---|
 | 2026-05-19 | Initial draft after Hodos panel R1 (Evans/Hohpe/Martin · Yegge/DHH/Spolsky · Wickham/Hintjens/Katz) | First inventory of 8 proven primitives + 8 candidates + open boundary questions |
 | 2026-05-19 (+2h) | HOL-6 MLOps Console v0 shipped at `d477a47` | **Promotion**: `render_box` + `body_*` family + 4-layer discipline + `headline_*` vocabulary + CSS design-tokens + static-emit pattern + glossary infrastructure all confirmed across 3rd surface — these go from "proven via 1 hop" to "proven via 2 hops" (one short of DHH's 3-surface bar). **New candidate**: structured narrative paragraph layer (`.mlops-narrative` CSS class + "What changed · For whom · Evidence · Response" template) — one consumer; needs HOL-5 or HOL-7 confirmation. **Confirmed not generalisable yet**: `body_evidence_cards`, `_DIAGNOSIS_COLORS`, `_VALUE_COLORS`, `headline_pack` — HOL-6 didn't need any of these. **Pre-extraction debt now concrete**: 3 renderers import from `render_holter.py` — HOL-35 `_shared.py` extraction is no longer hypothetical. |
+| 2026-05-19 (+4h) | **HOL-35 `_shared.py` extraction SHIPPED** — Cannon's PR-panel condition met | All renderer primitives (engine bridge, CSS, color maps, STATUS_GLOSSARY, tooltip_token, box primitives, headline shapes, body composables, sparkline SVG) extracted from `render_holter.py` into `holter/preview/_shared.py` (1242 LOC, single source of truth). `render_holter.py` shrunk 2780 → 1201 LOC. All 3 renderers (`render_holter`, `render_home`, `render_mlops`) now import from `_shared` only — no cross-renderer imports. Byte-identical HTML output verified across all 3 surfaces (96189/25914/46950). **Pre-extraction debt resolved.** |
+| 2026-05-19 (+5h) | **HOL-5 Platform API SHIPPED** at `5a5c638` | FastAPI + Pydantic, 309 LOC. Routes: /health, /investigations, /investigations/{pack_name}, /investigations/{pack_name}/run (501), /signals (501), /lineage/verify (real), /openapi.json. MCP feature flag, auth status header middleware. **Programmatic surface count: 1.** |
+| 2026-05-19 (+6h) | HOL-6 R1 panel ran (fresh roster: O'Neil/Hubbard/Victor · Banin/Rock/Raskin · Burt/Gigerenzer/Young), mean 5.67 — non-interrogable critique. Pause-and-iterate verdict from Hussain. | HOL-39/40/41 filed as R1→R2 build queue: drill-through coupling · severity narrative · cohort sparklines. Shipped same evening. |
+| 2026-05-19 (+8h) | HOL-6 R2 panel ran (same 9 voices), mean **6.32** (+0.65) | Sonnet panel hard-gate: "do not run R3 until Attest/Challenge/Defer ships." 5 R2-remediation tickets filed: HOL-42 (Attest/Challenge/Defer) · HOL-43 (interrogable sparkline + lineage chain + scrubber) · HOL-44 (top-of-page decision frame) · HOL-45 (filter + sort + threshold tooltips) · HOL-46 (fairness primary KPI carryover from Raskin R1+R2). All 5 shipped same evening. |
+| 2026-05-19 (+10h) | HOL-6 R3 panel ran (same 9 voices), mean **7.61** (+1.29) — largest single-round uplift on any HOL surface to date | **Per-panel**: Opus 7.57 (unanimous one-more-iteration · ask: HOL-CI confidence intervals) · Sonnet 7.29 (2/3 LOCK · ask: HOL-47 durable challenge artifact) · Haiku 7.97 (UNANIMOUS LOCK · Gigerenzer at 8.40 — highest single voice across all 3 surfaces). Vote: 5 LOCK / 4 one-more. **Above HOL-3 lock threshold (7.40)** · below HOL-4 (8.20). Per panel-review-process rule ("rounds repeat until ≥1 panel says lock"), HOL-6 is lock-eligible. <br><br>**Promotion**: NEW candidate primitives (drill-through coupling · severity narrative · in-session event log + decision affordances · window scrubber with pre-rendered SVG variants · lineage hash click-to-expand · pane-scoped filter strip · sortable table headers · threshold-tooltip pattern · primary-KPI-with-secondary-annotation discipline · top-of-page decision frame) added under "NEW candidates introduced by HOL-6 R2 build" — 10 patterns at single-consumer status, awaiting HOL-7 to confirm shape. <br><br>**Process artifacts validated**: 3-round panel review × 9 distinct voices, applied to a 3rd surface (HOL-3 was first, HOL-4 second, HOL-6 third — all hit lock-eligible composite, all under the 5-dimension Holter scorecard). Methodology generalises. <br><br>**Pattern travel via `_shared.py`**: HOL-3 + HOL-4 + HOL-6 = three-surface travel for the proven primitives (4-layer box · `render_box` + `body_*` · `headline_*` · CSS tokens · glossary · sparkline SVG). **Cannon's DHH "3+ surfaces" rule now met for the foundational set.** Extraction conversation can reopen — but per the existing extraction posture, defer until 4th surface (HOL-7) ships and the 10 new HOL-6 candidates have a confirmation/invalidation data point. |

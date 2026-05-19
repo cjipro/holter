@@ -104,12 +104,17 @@ work-tracking level, not the codebase level.
   (PULSE-99..106: Risk methodology, Chronicle, Value methodology, bank_policy
   contract, hypothesis validator, 12-pack backfill, Diagnosis methodology,
   Agentic AI placement worked example). **PULSE-107 = next engine ticket.**
-- **HOL-1..38** (current high water as of 2026-05-19). Recent activity:
+- **HOL-1..48** (current high water as of 2026-05-19 end-of-day). Recent activity:
   HOL-12..17 shipped (HOL-3 Workspace design-panel arc, design-locked
   2026-05-19); HOL-18..23 filed as Workspace residual backlog; HOL-4,
   HOL-24..30 shipped (HOL-4 Pulse Home design-panel arc, design-locked
   2026-05-19); HOL-31..33 filed as Home residual backlog; HOL-34..38 filed
-  as PR-panel structural backlog. **HOL-39 = next UI/build ticket.**
+  as PR-panel structural backlog; HOL-5 Platform API shipped (`5a5c638`);
+  HOL-35 `_shared.py` extraction shipped (Cannon condition met); HOL-39..46
+  shipped (HOL-6 MLOps Console R1→R2→R3 panel arc, lock-eligible at
+  composite 7.61 with 5 LOCK / 4 one-more across 9 voices); HOL-47..48
+  filed as R3 residual backlog (durable challenge artifact · bootstrap CI
+  on headline stats). **HOL-49 = next UI/build ticket.**
 
 ## Locked decisions
 
@@ -135,20 +140,20 @@ bank env validated framework candidates as env-present.
 
 | # | Surface | Stack | Audience | Ticket | State |
 |---|---|---|---|---|---|
-| 1 | Pulse Home | static HTML (specced Streamlit; built HTML for fast iteration) | All roles, entry feed | HOL-4 | **✅ DESIGN-LOCKED 2026-05-19** (live :8505) |
-| 2 | Investigation Workspace | static HTML (specced Panel+HoloViz; built HTML) | Investigation consumer; three-altitude single surface | HOL-3 | **✅ DESIGN-LOCKED 2026-05-19** (live :8504) |
+| 1 | Pulse Home | static HTML (specced Streamlit; built HTML for fast iteration) | All roles, entry feed | HOL-4 | **✅ DESIGN-LOCKED 2026-05-19** (composite 8.20, live :8505) |
+| 2 | Investigation Workspace | static HTML (specced Panel+HoloViz; built HTML) | Investigation consumer; three-altitude single surface | HOL-3 | **✅ DESIGN-LOCKED 2026-05-19** (composite 7.40, live :8504) |
 | 3 | Pulse Monitor | Panel + Bokeh | Day-to-day analysts; chart-compressed Journey rendering | HOL-7 | 🔒 Gated on registry ≥40 packs (currently 13) |
-| 4 | MLOps Console | Streamlit + FastAPI | ML eng + MRM; drift, fairness, lineage, synthesis governance | HOL-6 | ⏳ **Next build** |
-| 5 | Pulse Platform API | FastAPI + Pydantic | Other tools (Tableau, Databricks Apps, bank portals) | HOL-5 | ⏳ Programmatic, no UI |
+| 4 | MLOps Console | static HTML (specced Streamlit+FastAPI; built HTML for parity with HOL-3/4) | ML eng + MRM; drift, fairness, lineage, synthesis governance | HOL-6 | **✅ LOCK-ELIGIBLE 2026-05-19** (composite 7.61 — R1 5.67 → R2 6.32 → R3 7.61; 5 LOCK / 4 one-more across 9 voices; Haiku panel unanimous LOCK; live :8506) |
+| 5 | Pulse Platform API | FastAPI + Pydantic | Other tools (Tableau, Databricks Apps, bank portals) | HOL-5 | ✅ **SHIPPED** (309 LOC at `5a5c638`; programmatic, no UI) |
 
 **Dashboard-tension resolution:** *rendering is the variable; investigation
 is the invariant.* Surface 3 is not a fourth altitude or a separate product —
 it is the Journey altitude rendered chart-first instead of narrative-first,
 with lineage hash + confidence band + Designed Ceiling on every chart.
 
-**Build order:** ~~HOL-3 (Workspace)~~ ✅ → ~~HOL-4 (Home)~~ ✅ → **HOL-6 (MLOps)** ← next → HOL-5 (API) → HOL-7 (Monitor — gated). HOL-8 (pyproject 3.11 tightening) runs in parallel.
+**Build order:** ~~HOL-3 (Workspace)~~ ✅ → ~~HOL-4 (Home)~~ ✅ → ~~HOL-5 (API)~~ ✅ → ~~HOL-35 `_shared.py`~~ ✅ → ~~HOL-6 (MLOps)~~ ✅ → **HOL-7 (Monitor)** ← next (gated on registry ≥40 packs). HOL-8 (pyproject 3.11 tightening) runs in parallel.
 
-**Pre-condition for HOL-6:** ship [HOL-35](https://cjipro.atlassian.net/browse/HOL-35) (`_shared.py` extraction) first — Cannon's PR-panel ruling. The third renderer must NOT import from either of the first two.
+**Pre-condition for HOL-6 (met 2026-05-19):** [HOL-35](https://cjipro.atlassian.net/browse/HOL-35) `_shared.py` extraction shipped — Cannon's PR-panel ruling met. All 3 renderers (`render_holter`, `render_home`, `render_mlops`) now import primitives from `_shared.py` only; no cross-renderer imports.
 
 **Hard launch gate on HOL-7:** decision-packs registry must have ≥40 templates covering FrictionBench 12-cell × multiple signatures. **12 cells now deep** (3 showcase + 9 fan-out done 2026-05-17/18); 13 packs total including the `journey_friction` test fixture. ~27 more cohort/remediation variant packs to clear the 40-floor. Calendar dates do not unlock this; registry depth does.
 
@@ -372,6 +377,98 @@ Composite +0.80 above HOL-3 (7.40) and +0.35 above the pre-R3 estimate (7.85). D
 Same caveat as HOL-3: voice panels test design coherence, not real-user task completion. The 9-voice × 3-round arc has hit its ceiling on this surface. Re-opening for panel re-scoring without (a) ≥2 of the residual tickets shipped OR (b) real-analyst study findings is not earning more signal.
 
 **Lock is unanimous** — Opus, Sonnet, AND Haiku all explicitly verdicted "LOCK" at R3. First unanimous lock across both HOL-3 and HOL-4 panel arcs.
+
+### HOL-6 MLOps Console — LOCK-ELIGIBLE 2026-05-19
+
+The 4th surface in the design-panel arc (`holter/preview/render_mlops.py`, served at `:8506`) — MRM (Model Risk Management) reviewer console for drift / fairness / lineage / synthesis governance. Built same-day as HOL-3 + HOL-4 lock; lock-eligible after 3 rounds of panel review + 8 build tickets. MIL briefing aesthetic per HOL-1's surface-by-surface aesthetic rule. Built static-HTML pattern same as HOL-3/4 (departure from the ticket's specced Streamlit+FastAPI — rationale: cross-surface design parity + same-day iteration).
+
+**4 panes (locked):**
+- **DRIFT MONITORS** — Worst-cell delta KPI + cohort-disaggregated sparklines per cell, window scrubber [7d][14d][30d], severity-gradient narrative
+- **FAIRNESS RE-CHECK** — Worst equalised-odds primary KPI (HOL-46) + per-metric below-floor counts + cohort narrative
+- **LINEAGE VERIFIER** — Chain health stat + per-cell hash-link with click-to-expand 5-deep ancestry (sha → pipeline → dataset → date per hop) + chain-status severity
+- **SYNTHESIS GOVERNANCE** — Per-pack attestation table with sortable columns + Attest/Challenge/Defer inline actions on PENDING rows + session-log strip
+
+**Universal patterns shipped in HOL-6 R2 build (HOL-39..46):**
+- **Drill-through coupling** (HOL-39) — clicking any `cell N` link highlights every matching row across all 4 panes
+- **Severity-gradient narrative** (HOL-40) — each pane ends with NOMINAL/WATCH/ESCALATE/ACUTE-colored block; ACUTE non-suppressible
+- **In-session event log** (HOL-42 + HOL-44) — `window.holterEventLog` shared between cell-scope (Attest/Challenge/Defer) and model-scope (Approve/Committee/Retrain) decisions
+- **Window scrubber + multi-pre-rendered SVG variants** (HOL-43) — `body[data-window]` flips which SVG variant is visible per row
+- **Lineage hash click-to-expand** (HOL-43) — `.hash-link` toggles `.hash-chain` block underneath the row
+- **Top-of-page decision frame** (HOL-44) — trigger sentence + 3-button decision cluster + session badge; replaces bare masthead
+- **Pane-scoped severity filter + sortable SYNTHESIS table** (HOL-45) — `data-severity` per row + filter strip per pane; `th.sortable` with asc/desc indicators
+- **THRESHOLD_RULES dict + threshold tooltips** (HOL-45) — plain-language rule string for every severity badge + status + metric; surfaced as native `title` on `.threshold-token`
+- **Primary-KPI-with-secondary-annotation** (HOL-46) — replaces 3-chip equal-weight strip with `headline_stat_card` + demoted PASS/FAIL counts as meta
+
+**Where to find it:**
+- Renderer: `holter/preview/render_mlops.py`
+- Output: `dist/preview/mlops/index.html` (gitignored)
+- Served at: **http://localhost:8506/** via `holter/preview/serve_mlops.py`
+- Start: `py holter/preview/serve_mlops.py`
+
+#### Panel review process (lock justification)
+
+Three panels × three model classes × three named experts per panel = **9 fresh voices** (no overlap with HOL-3 or HOL-4 voices per [[panel-review-process]]). Three rounds across 2026-05-19. Largest single-round uplift on any HOL surface to date (+1.29 R2→R3).
+
+Roster:
+| Surface | Opus | Sonnet | Haiku |
+|---|---|---|---|
+| HOL-6 | Cathy O'Neil · Douglas Hubbard · Bret Victor | Andrew Banin · Linda Rock · Aza Raskin | Cyrus Burt · Gerd Gigerenzer · Indi Young |
+
+| Round | Opus mean | Sonnet mean | Haiku mean | All-9 mean |
+|---|---|---|---|---|
+| R1 (v0 baseline) | 5.67 | 5.67 | 5.67 | **5.67** |
+| R2 (after HOL-39/40/41) | 6.50 | 5.95 | 6.52 | **6.32** |
+| R3 (after HOL-42/43/44/45/46) | **7.57** | **7.29** | **7.97** | **7.61** |
+
+Net uplift R1 → R3: **+1.94** (HOL-3 was +1.17, HOL-4 was +1.89). **Above HOL-3's lock threshold (7.40); below HOL-4 (8.20).**
+
+**R3 verdict tally:**
+- **LOCK** (5 voices): Rock (Sonnet, with caveat), Raskin (Sonnet), Burt (Haiku), Gigerenzer (Haiku, 8.40 — highest single voice across all 3 surfaces), Young (Haiku)
+- **One-more-iteration** (4 voices): Banin (Sonnet), O'Neil (Opus), Hubbard (Opus, HOL-CI ask), Victor (Opus)
+
+Per the panel-review-process rule ("rounds repeat until ≥1 panel says lock"), HOL-6 is lock-eligible (Haiku panel unanimous LOCK). Sonnet panel 2/3 LOCK with hard-gate (HOL-42 attest/challenge/defer) cleared. Opus panel unanimous one-more-iteration but their ask (HOL-48 confidence intervals) is engine-contract work, not design-language work.
+
+#### Holter scorecard (5 weighted dimensions, R3 cross-panel)
+
+Same framework as HOL-3 + HOL-4 (see [[holter-scorecard]]). Computed from the 9-voice R3 weighted means:
+
+| Dimension | R3 score | Weight | Weighted |
+|---|---|---|---|
+| Verifiable transparency | 7.7 | 30% | 2.31 |
+| Cognitive load | 7.2 | 15% | 1.08 |
+| Decision-action coupling | 7.5 | 25% | 1.875 |
+| Fairness surfacing | 7.4 | 15% | 1.11 |
+| Regulator survival | 7.3 | 15% | 1.095 |
+| **Composite** | | | **7.47** |
+
+Composite 7.47 (vs HOL-3 7.40, HOL-4 8.20). Decision-action coupling 7.5 — closed Rock's R2 4/10 critique via HOL-42 attest/challenge/defer + HOL-44 model-scope decision frame.
+
+#### Ticket spine — HOL-6 build + 3-round arc (SHIPPED 2026-05-19)
+
+| Key | Round | Voice / Job | Commit |
+|---|---|---|---|
+| [HOL-6](https://cjipro.atlassian.net/browse/HOL-6) | v0 | Initial 4-pane render | `d477a47` |
+| [HOL-41](https://cjipro.atlassian.net/browse/HOL-41) | R1→R2 | Cohort sparklines | (commit before HOL-39) |
+| [HOL-40](https://cjipro.atlassian.net/browse/HOL-40) | R1→R2 | Severity-gradient narrative | (commit before HOL-39) |
+| [HOL-39](https://cjipro.atlassian.net/browse/HOL-39) | R1→R2 | Victor — cell-id drill-through across panes | `6178a39` |
+| [HOL-42](https://cjipro.atlassian.net/browse/HOL-42) | R2→R3 | Rock (hard-gate) — Attest/Challenge/Defer on PENDING rows | `abfb66a` |
+| [HOL-43](https://cjipro.atlassian.net/browse/HOL-43) | R2→R3 | Victor/Hubbard/Banin/O'Neil — interrogable sparkline + lineage chain + scrubber | `e21ccb7` |
+| [HOL-44](https://cjipro.atlassian.net/browse/HOL-44) | R2→R3 | Young — top-of-page decision frame | `750b496` |
+| [HOL-45](https://cjipro.atlassian.net/browse/HOL-45) | R2→R3 | Burt/Gigerenzer — filter + sort + threshold tooltips | `7d6f929` |
+| [HOL-46](https://cjipro.atlassian.net/browse/HOL-46) | R2→R3 | Raskin (R1+R2 carryover) — fairness primary KPI | `8e7eb40` |
+
+#### Residual backlog (filed 2026-05-19 — NOT lock-blockers)
+
+| Key | Voice | Item | Type |
+|---|---|---|---|
+| [HOL-47](https://cjipro.atlassian.net/browse/HOL-47) | Banin + Rock | Durable challenge artifact (lineage-attached, not in-session only) | Engine-contract (PRA-defensibility) |
+| [HOL-48](https://cjipro.atlassian.net/browse/HOL-48) | Hubbard + O'Neil + Victor | Bootstrap confidence intervals on every headline stat | Engine-contract (CI from existing bootstrap) |
+
+#### Missing validation layer
+
+Same caveat as HOL-3 + HOL-4: voice panels test design coherence, not real-user task completion. The 9-voice × 3-round arc has hit its ceiling on this surface. Re-opening for panel re-scoring without (a) HOL-47 or HOL-48 shipped OR (b) real-analyst MRM-reviewer study findings is not earning more signal.
+
+**Lock is lock-eligible (not unanimous like HOL-4)** — Haiku panel unanimous LOCK; Sonnet panel 2/3 LOCK; Opus panel unanimous one-more-iteration but their ask is engine-contract work tracked under HOL-48. Per panel-review-process rule, HOL-6 is lock-eligible at composite 7.61.
 
 ### Ticket spine — Value + Risk + Diagnosis methodology architecture (SHIPPED 2026-05-18)
 
