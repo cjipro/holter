@@ -380,6 +380,7 @@ Diagnosis can OVERRIDE the 2x2: `JOURNEY_PROBLEM` → "fix the journey" verb reg
 
 - [`docs/sessions/2026-05-17.md`](docs/sessions/2026-05-17.md) — standup + pulse/ migration + HOL-1 closure
 - [`docs/sessions/2026-05-18.md`](docs/sessions/2026-05-18.md) — 9-pack fan-out + briefing/canvas previews + Value/Risk architecture + 8 tickets filed + HOL-10 phases 1+2 + 8502 reroute + **evening: full v2 spine shipped (10 tickets PULSE-99/100/101/102/103/104/105/106 + HOL-9/HOL-11)**
+- [`docs/sessions/2026-05-19.md`](docs/sessions/2026-05-19.md) — HOL-3 design-lock (composite 7.40, panel mean 7.89) + HOL-4 design-lock (composite 8.20, panel mean 8.28, unanimous) + virtual PR-panel pre-push gate (3-panel × 3-voice code review with Torvalds/Hickey/Kernighan · van Rossum/Hettinger/Cannon · Beck/Fowler/Metz) + Barclays scrub (closed pre-existing OSS naming-discipline leak from commit `cb188a9`) + **pushed 35 commits to `cjipro/holter` main at `8f8704f`**. 16 tickets shipped, 14 filed as backlog, 27 distinct expert voices used.
 
 ## v1 design spine (already shipped, lives in while-sleeping pending migration)
 
