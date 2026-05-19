@@ -141,7 +141,7 @@ with lineage hash + confidence band + Designed Ceiling on every chart.
 
 ### Canvas-as-discipline + Value/Risk computed slots (LOCKED 2026-05-18)
 
-Holter understands the Barclays Data Product Canvas (Decision Intelligence Demand & Delivery Playbook, p.51) but communicates in briefing form, not canvas form. **Canvas = skeleton (governance contract). Briefing = body (voice).**
+Holter understands the real_bank Data Product Canvas (Decision Intelligence Demand & Delivery Playbook, p.51) but communicates in briefing form, not canvas form. **Canvas = skeleton (governance contract). Briefing = body (voice).**
 
 Canvas slots split into three classes:
 - **Declared** (author writes, validator checks): Problem · Hypothesis · Data · Actions · Actors · KPIs · Risks

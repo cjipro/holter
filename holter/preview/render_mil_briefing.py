@@ -7,7 +7,7 @@ content sections re-keyed for Pulse decision packs:
 
   MIL Sonar concept               Pulse mapping
   ──────────────────────────────  ─────────────────────────────────────
-  Barclays Sentiment score        Pack coverage score (12/12 cells)
+  real_bank Sentiment score       Pack coverage score (12/12 cells)
   Quote cards                     Bank-altitude headlines from packs
   Issues Status box               Cell ground-truth distribution
   Journey list                    4 friction-target screens

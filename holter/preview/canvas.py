@@ -1,6 +1,6 @@
 """Decision-pack Product Canvas — Streamlit, dev-time only.
 
-Renders a Pulse decision pack in the **Barclays Data Product Canvas** layout
+Renders a Pulse decision pack in the **real_bank Data Product Canvas** layout
 (Decision Intelligence Demand & Delivery Playbook, p.51) — but styled to
 match the MIL Sonar V4 briefing aesthetic (dark navy + amber + DM Mono +
 Plus Jakarta Sans).
@@ -8,7 +8,7 @@ Plus Jakarta Sans).
 Canvas slots are mapped onto pack metadata + hypothesis where present; gaps
 are honestly marked "not yet declared in pack" rather than fabricated.
 
-Color coding mirrors the Barclays template legend:
+Color coding mirrors the canvas template legend:
   Green  · Business Vision   (Problem, Values, Risks)
   Blue   · Product Vision    (Data, Solution, Hypothesis)
   Amber  · Vision of Strategy (KPIs, Actions, Actors, Performance/Impact)
@@ -293,7 +293,7 @@ html, body, [class*="st-emotion"] {
 .canvas-hdr-value.mono { font-family: var(--mono); font-size: 11px; }
 .canvas-hdr-value.amber { color: var(--amber); }
 
-/* the canvas grid — mirrors Barclays template
+/* the canvas grid — mirrors real_bank template
    Row 1: Problem (rowspan 2) | Data | Solution | KPIs | Actions
    Row 2: (Problem cont.)     | Hypothesis (col-span 2) | Actors (col-span 2)
    Row 3: Values | Risks (col-span 2 width) | Performance/Impact     */
@@ -492,7 +492,7 @@ def render_cell(slot_class: str, title: str, vision: str, body_md: str) -> str:
 def render_canvas(pack: dict) -> str:
     d = canvas_data(pack)
 
-    # vision categories per Barclays legend
+    # vision categories per real_bank legend
     cells = (
         render_cell("problem",     "Problem",            "business", d["problem"])
         + render_cell("data",        "Data",               "product",  d["data"])
@@ -513,7 +513,7 @@ def render_canvas(pack: dict) -> str:
     <span class="canvas-brand-sub">Decision-pack Product Canvas · MIL-styled · v0 dev preview</span>
   </div>
   <div class="canvas-meta">
-    Following Barclays Decision Intelligence Demand &amp; Delivery Playbook · p.51
+    Following real_bank Decision Intelligence Demand &amp; Delivery Playbook · p.51
   </div>
 </div>
 
