@@ -299,8 +299,8 @@ CSS = """
   --red:        #FF5A6E;
   --live:       #4FE583;
   --text:       #DAE6EE;
-  --text-2:     #94A8B6;
-  --text-3:     #607080;
+  --text-2:     #A8BCC8;  /* HOL-26 — was #94A8B6; lifted for WCAG AA on card-2 */
+  --text-3:     #7A8C9A;  /* HOL-26 — was #607080; lifted for working-text legibility */
   --mono:       'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace;
   --sans:       'Inter', 'SF Pro Text', system-ui, sans-serif;
   --serif:      'Source Serif Pro', Georgia, serif;
@@ -393,16 +393,20 @@ a { color: var(--blue); text-decoration: none; }
 }
 
 /* Page-level dateline + masthead (news portal feel) */
+/* HOL-26 — Spiekermann: ONE serif lead per page.
+   Masthead demoted to mono nameplate (like a newspaper flag); hero card
+   headline is the unambiguous lead. Eye lands once, reads down. */
 .home-masthead {
   display: flex; align-items: baseline; justify-content: space-between;
   border-bottom: 1px solid var(--border);
-  padding-bottom: 14px;
+  padding-bottom: 10px;
 }
 .home-masthead-title {
-  font-family: var(--serif);
-  font-size: 24px; font-weight: 700;
-  color: var(--text);
-  letter-spacing: 0.2px;
+  font-family: var(--mono);
+  font-size: 12px; font-weight: 800;
+  letter-spacing: 2.4px;
+  text-transform: uppercase;
+  color: var(--text-3);
 }
 .home-masthead-dateline {
   font-family: var(--mono);
@@ -466,7 +470,7 @@ a { color: var(--blue); text-decoration: none; }
   margin: 6px 0 10px;
 }
 .hero-card-summary {
-  font-size: 14px; color: var(--text-2);
+  font-size: 15px; color: var(--text);  /* HOL-26 — working text gets full contrast, not text-2 */
   line-height: 1.6;
   max-width: 720px;
 }
@@ -537,8 +541,8 @@ a { color: var(--blue); text-decoration: none; }
   margin: 4px 0;
 }
 .feed-card-summary {
-  font-size: 12px; color: var(--text-2);
-  line-height: 1.5;
+  font-size: 13px; color: var(--text);  /* HOL-26 — working text full contrast */
+  line-height: 1.55;
   flex: 1;
 }
 .feed-card-foot {
