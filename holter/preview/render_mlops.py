@@ -178,8 +178,11 @@ def multi_sparkline_svg(series_list: list[list[float]], colors: list[str],
             f"{i*step:.1f},{height - ((v - vmin) / span) * height:.1f}"
             for i, v in enumerate(series)
         )
+        # van Rossum PR-panel: escape label — safe with current stub
+        # ["18-24","25-54","55+"] but breaks if engine later passes a
+        # cohort label containing < or " (e.g. "age_band: <26").
         polylines.append(
-            f'<polyline class="ms-line" data-cohort="{label}" '
+            f'<polyline class="ms-line" data-cohort="{_e(label)}" '
             f'points="{pts}" fill="none" '
             f'stroke="{color}" stroke-width="1.4" opacity="0.85"/>'
         )
@@ -367,12 +370,6 @@ def classify_synthesis_severity(n_llm: int) -> str:
     if n_llm == 0: return "NOMINAL"
     if n_llm == 1: return "ESCALATE"
     return "ACUTE"
-
-
-def classify_row_severity_drift(delta: int) -> str:
-    """Per-row drift severity for HOL-45 filter. Same thresholds as
-    classify_drift_severity but applied to a single row's delta."""
-    return classify_drift_severity(delta)
 
 
 def attestation_severity(attestation: str) -> str:
@@ -821,8 +818,7 @@ body[data-window="30d"] .drift-cell-spark svg[data-window="30d"] {
 }
 .mlops-decision-session-confirm--shown { opacity: 1; }
 
-/* Demote old masthead — only date strip remains (top-right, slim) */
-.mlops-masthead { display: none; }
+/* Dateline only — masthead removed in PR-panel fix-first (Kernighan) */
 .mlops-dateline {
   font-family: var(--mono); font-size: 9px; color: var(--text-3);
   letter-spacing: 1.2px; text-transform: uppercase;
@@ -961,7 +957,7 @@ def render_drift_pane(packs: list[dict]) -> str:
         spark = "".join(spark_parts)
         # HOL-39: cell-id is now a click-target; row carries data-cell-id
         # HOL-45: per-row severity for filter + delta value carries threshold tooltip
-        row_sev = classify_row_severity_drift(delta)
+        row_sev = classify_drift_severity(delta)
         delta_tooltip = THRESHOLD_RULES.get(f"DRIFT_{row_sev}", "")
         drift_rows.append(
             f'<div class="drift-cell cell-row pane-filterable" '
@@ -1322,13 +1318,6 @@ def render_topnav() -> str:
 </header>"""
 
 
-def render_masthead() -> str:
-    """Deprecated by HOL-44 — kept for back-compat; CSS hides it. Date
-    strip moved into render_decision_frame() top-right corner."""
-    today = _dt.date.today().strftime("%A · %d %b %Y")
-    return f'<div class="mlops-masthead">MLOps Console · {today} · {NOW}</div>'
-
-
 def render_decision_frame(packs: list[dict]) -> str:
     """HOL-44 — Top-of-page decision frame. Replaces the bare procurement-gate
     masthead with a Young/Burt/Rock-aligned "why you are here today" framing.
@@ -1592,6 +1581,12 @@ window.holterEventLog = window.holterEventLog || [];
   document.querySelectorAll('.mlops-decision-btn').forEach(btn => {{
     btn.addEventListener('click', function (ev) {{
       ev.preventDefault();
+      // Torvalds PR-panel: double-click guard. Rapid-tap on "Route to
+      // committee" was pushing two events to the log; unacceptable for
+      // a sign-off workbench. data-locked latches on first click.
+      if (this.getAttribute('data-locked') === 'true') return;
+      this.setAttribute('data-locked', 'true');
+      this.disabled = true;
       const decision = this.getAttribute('data-decision');
       window.holterEventLog = window.holterEventLog || [];
       window.holterEventLog.push({{
