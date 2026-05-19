@@ -61,7 +61,12 @@ and the GitHub org.
 - **Hodos relationship:** Holter is one application repo. The general engine
   extraction target is Hodos (deferred per architecture panel 2026-04-30 PM).
   Patterns proven in Holter that generalise become candidates for the Hodos
-  seed when extraction begins.
+  seed when extraction begins. See [`docs/hodos-foundations.md`](docs/hodos-foundations.md)
+  for the living inventory of foundations (proven primitives, candidates,
+  domain-specific items, open boundary questions). Updated after each new
+  surface design-locks. Do not extract today — per 2026-05-19 Hodos-panel
+  verdict, build HOL-6 first; the panel reconvenes after the 3rd surface
+  ships (DHH "3+ surfaces" rule).
 - **No phases, no timelines.** Work moves ticket-to-ticket on dependency-readiness
   (see `feedback_no_phases_jira_tickets.md` memory in while-sleeping).
 - **No ship without ticket.** Every change in this repo requires a Jira ticket
