@@ -73,9 +73,120 @@ def collect_flagged_signals(packs: list[dict]) -> list[dict]:
             "cell_score": cs,
             "tier": cs.action_tier,
             "rank": _TIER_RANK.get(cs.action_tier, 99),
+            "journey": cs.journey_id,
         })
     out.sort(key=lambda r: r["rank"])
     return out
+
+
+def select_flagged_grid(flagged: list[dict], hero: dict, n: int = 3) -> list[dict]:
+    """HOL-25: deduplicate FLAGGED grid against hero's journey.
+
+    Selection logic:
+      1. Exclude the hero pack itself
+      2. Prefer breadth-first by journey (one card per journey before doubling up)
+      3. Among same-journey candidates, take the highest-severity one
+      4. Hero's journey can still appear ONCE if there are too few other journeys
+    """
+    hero_pack_name = hero["pack"]["meta"]["pack_name"]
+    hero_journey = hero["journey"]
+    seen_journeys: set[str] = set()
+    out: list[dict] = []
+
+    # Pass 1: highest-severity card from each non-hero journey
+    for sig in flagged:
+        if sig["pack"]["meta"]["pack_name"] == hero_pack_name:
+            continue
+        if sig["journey"] == hero_journey:
+            continue
+        if sig["journey"] in seen_journeys:
+            continue
+        seen_journeys.add(sig["journey"])
+        out.append(sig)
+        if len(out) >= n:
+            return out
+
+    # Pass 2: fill remaining slots with any unseen card (still skipping hero pack)
+    for sig in flagged:
+        if sig["pack"]["meta"]["pack_name"] == hero_pack_name:
+            continue
+        if sig in out:
+            continue
+        out.append(sig)
+        if len(out) >= n:
+            return out
+
+    return out
+
+
+# HOL-25 — de-templated card summaries. Keyed by (signature, diagnosis); each
+# combo carries 1-2 distinct sentence patterns so cards on the same journey
+# read as distinct stories.
+_CARD_SUMMARY_TEMPLATES: dict[tuple[str, str], list[str]] = {
+    ("abandon_before_submit", "BOTH"): [
+        "High-intent sessions reach the form's last field then leave — both the "
+        "journey design and the in-flow support layer need attention.",
+        "Late-stage abandonment driven by both the form itself and the absence "
+        "of contextual help. Two-front fix.",
+    ],
+    ("abandon_before_submit", "JOURNEY_PROBLEM"): [
+        "Sessions reach the form's last field then leave. Fix the journey design — "
+        "assistance doesn't recover this kind of abandonment.",
+    ],
+    ("abandon_before_submit", "SUPPORT_PROBLEM"): [
+        "Sessions abandon at the submission step but accept assistance when offered. "
+        "Strengthen the in-flow support layer; the journey itself is sound.",
+    ],
+    ("abandon_before_submit", "INCONCLUSIVE"): [
+        "Abandonment signal fires at the submission step. Engine can't yet separate "
+        "journey-design causes from support-gap causes — collect more control sessions.",
+    ],
+    ("dwell_after_error", "BOTH"): [
+        "Sessions stall after a validation error — both the error message itself "
+        "and the inline help around it need work.",
+        "Post-error dwell exceeds baseline on both the message wording and the "
+        "absence of in-context recovery affordance.",
+    ],
+    ("dwell_after_error", "JOURNEY_PROBLEM"): [
+        "Sessions stall after a validation error. The error message itself is the "
+        "friction — fix the journey, not the support around it.",
+    ],
+    ("dwell_after_error", "SUPPORT_PROBLEM"): [
+        "Sessions stall after a validation error but recover when assisted. "
+        "Deploy in-context support at the moment the error fires.",
+    ],
+    ("dwell_after_error", "INCONCLUSIVE"): [
+        "Post-error dwell detected. Engine can't yet attribute the friction to "
+        "journey or support — collect more data before deciding.",
+    ],
+    ("multi_back_press", "BOTH"): [
+        "Sessions backtrack repeatedly within a single screen — both the form "
+        "flow and the help context need rework.",
+    ],
+    ("multi_back_press", "JOURNEY_PROBLEM"): [
+        "Repeated back-presses signal users searching for fields they already left. "
+        "The journey order is the friction — assistance doesn't fix navigation.",
+    ],
+    ("multi_back_press", "SUPPORT_PROBLEM"): [
+        "Sessions show repeated back-navigation; assistance reduces it. "
+        "Surface contextual help at the screens with highest re-entry.",
+    ],
+    ("multi_back_press", "INCONCLUSIVE"): [
+        "Multi-back-press signal fires. Engine can't tell if this is journey "
+        "navigation or unclear support — need more sessions.",
+    ],
+}
+
+
+def summary_for(signature: str, diagnosis: str, pack_name: str) -> str:
+    """HOL-25 — varied per-card prose. Falls back to engine recommendation."""
+    templates = _CARD_SUMMARY_TEMPLATES.get((signature, diagnosis), [])
+    if not templates:
+        return ""  # caller falls back to placement_recommendation
+    # Deterministic selection by pack-name hash so a given pack always shows the
+    # same template (stable across reloads), but varies across the registry.
+    idx = sum(ord(c) for c in pack_name) % len(templates)
+    return templates[idx]
 
 
 # Stub data for AWAITING REVIEW and MLOPS — placeholders until engine
@@ -450,9 +561,7 @@ def render_hero(top_signal: dict) -> str:
     color = _ACTION_COLORS.get(tier, "var(--amber)")
     journey = cs.journey_id.replace("_", " · ")
     signature = cs.signature_id.replace("_", " ")
-    # Headline reads as news, not as engine output. Diagnosis becomes the
-    # "why" prefix; signature is the "what was detected"; recommendation
-    # follows below as the lede.
+    # Headline reads as news. Diagnosis becomes the "why" prefix.
     _DIAG_PREFIX = {
         "SUPPORT_PROBLEM": "Support gap detected",
         "JOURNEY_PROBLEM": "Journey design gap detected",
@@ -461,10 +570,21 @@ def render_hero(top_signal: dict) -> str:
     }
     diag_prefix = _DIAG_PREFIX.get(cs.diagnosis.diagnosis, "Friction detected")
     headline = f"{diag_prefix} on {journey.title()}"
+    # HOL-25 — use de-templated summary (varied per signature × diagnosis),
+    # falling back to engine recommendation if no template matches.
+    varied_summary = summary_for(cs.signature_id, cs.diagnosis.diagnosis,
+                                  pack["meta"]["pack_name"])
     summary = (
-        f"<strong>Signature:</strong> {signature}. {cs.placement_recommendation}"
+        f'<strong>Signature:</strong> {signature}. '
+        f'{varied_summary or cs.placement_recommendation}'
     )
+    # HOL-25 — slug breadcrumb killed. Provenance moves to a hover-tooltip
+    # on the INVESTIGATE → CTA so a curious reader can still verify lineage.
     sha = short_hash(pack["sha256"])
+    provenance_tooltip = (
+        f"pack: {pack['meta']['pack_name']} · sha256:{sha} · "
+        f"verdict v0 · DuckDB-backed (PULSE)"
+    ).replace('"', "&quot;")
     return f"""
 <a class="hero-card" style="border-left-color:{color}; text-decoration:none; color:inherit;"
    href="http://localhost:8504/" target="_blank">
@@ -478,13 +598,8 @@ def render_hero(top_signal: dict) -> str:
     </div>
     <div class="hero-card-headline">{headline}</div>
     <div class="hero-card-summary">{summary}</div>
-    <div class="hero-card-foot">
-      <span>pack: {pack["meta"]["pack_name"][:60]}</span>
-      <span>· sha256:{sha}</span>
-      <span>· verdict v0 · DuckDB-backed (PULSE)</span>
-    </div>
   </div>
-  <span class="hero-card-cta">INVESTIGATE →</span>
+  <span class="hero-card-cta" data-tooltip="{provenance_tooltip}">INVESTIGATE →</span>
 </a>"""
 
 
@@ -517,20 +632,32 @@ def render_feed_card(*, tag: str, tag_color: str, headline: str, summary: str,
 </a>"""
 
 
-def render_flagged_feed(flagged: list[dict]) -> str:
-    """3-card grid of next-most-urgent signals (after the hero)."""
+def render_flagged_feed(flagged: list[dict], hero: dict) -> str:
+    """3-card grid of next-most-urgent signals (after the hero).
+
+    HOL-25 — uses select_flagged_grid() to deduplicate against the hero's
+    journey and prefer breadth across journeys, and per-card varied summary
+    so the cards don't read as the same recommendation pasted three times.
+    """
+    grid = select_flagged_grid(flagged, hero, n=3)
     cards = []
-    for sig in flagged[1:4]:  # skip hero, show next 3
+    for sig in grid:
         pack = sig["pack"]
         cs = sig["cell_score"]
         tier = cs.action_tier
         accent = _ACTION_COLORS.get(tier, "var(--amber)")
         journey = cs.journey_id.replace("_", " · ").title()
+        signature = cs.signature_id.replace("_", " ")
+        varied = summary_for(cs.signature_id, cs.diagnosis.diagnosis,
+                              pack["meta"]["pack_name"])
+        summary = varied or cs.placement_recommendation
+        if len(summary) > 180:
+            summary = summary[:177] + "…"
         cards.append(render_feed_card(
             tag="FLAGGED",
             tag_color="var(--red)" if tier == "ACUTE" else "var(--amber)",
-            headline=f"{journey} — {cs.signature_id.replace('_', ' ')}",
-            summary=cs.placement_recommendation[:160] + ("…" if len(cs.placement_recommendation) > 160 else ""),
+            headline=f"{journey} — {signature}",
+            summary=summary,
             tier=tier,
             tier_dim="action",
             meta_left=f"sha:{short_hash(pack['sha256'])}",
@@ -540,11 +667,13 @@ def render_flagged_feed(flagged: list[dict]) -> str:
         ))
     if not cards:
         return ""
+    remaining = max(0, len(flagged) - 1 - len(cards))
+    count_label = f"{remaining} more in pipeline" if remaining else "all surfaced"
     return f"""
 <section>
   <div class="section-label">
     Flagged signals
-    <span class="section-label-count">{len(flagged) - 1} more in pipeline</span>
+    <span class="section-label-count">{count_label}</span>
   </div>
   <div class="feed-grid">{"".join(cards)}</div>
 </section>"""
@@ -613,8 +742,9 @@ def render_page() -> str:
 
     sections = []
     if flagged:
-        sections.append(render_hero(flagged[0]))
-        sections.append(render_flagged_feed(flagged))
+        hero = flagged[0]
+        sections.append(render_hero(hero))
+        sections.append(render_flagged_feed(flagged, hero))
     sections.append(render_awaiting_review(_STUB_AWAITING_REVIEW))
     sections.append(render_mlops_alerts(_STUB_MLOPS_ALERTS))
 
