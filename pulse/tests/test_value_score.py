@@ -291,7 +291,7 @@ def test_methodology_version_pinned_in_output() -> None:
     )
     methodology = load_methodology()
     assert score.methodology_version == str(methodology["methodology_version"])
-    assert score.methodology_version == "0.1.0"
+    assert score.methodology_version == "0.2.0"
 
 
 def test_valuescore_as_dict_round_trip() -> None:
@@ -302,6 +302,137 @@ def test_valuescore_as_dict_round_trip() -> None:
     assert d["tier"] == score.tier
     assert d["methodology_version"] == score.methodology_version
     assert d["inputs_hash"] == score.inputs_hash
+    # v0.2 commercial-estimate fields surface in the dict even when None
+    assert "estimated_monthly_lift_gbp" in d
+    assert "conversion_rate_delta" in d
+    assert "confidence_interval" in d
+    assert "arpu_source" in d
+
+
+# --- v0.2 commercial estimate (PULSE-107) ------------------------------------
+
+
+def _bank_policy_with_arpu(arpu_per_journey: dict[str, float]) -> dict:
+    cfg = _good_bank_policy()
+    cfg["arpu_per_journey"] = arpu_per_journey
+    return cfg
+
+
+def test_estimated_lift_none_when_arpu_block_absent() -> None:
+    """Bank policies that don't configure arpu_per_journey at all get
+    sized-lift = None — the categorical tier is unaffected, but the
+    rendering surface knows not to draw a £ figure."""
+    score = score_value(
+        shape=_nominal_shape(),
+        metrics=_quiet_metrics(),
+        bank_policy=_good_bank_policy(),  # no arpu_per_journey
+    )
+    assert score.estimated_monthly_lift_gbp is None
+    assert score.arpu_source is None
+
+
+def test_estimated_lift_none_when_journey_category_missing() -> None:
+    """ARPU block present but doesn't cover this journey_category → None."""
+    policy = _bank_policy_with_arpu({"choke_point": 42.0})
+    score = score_value(
+        shape=_nominal_shape(),  # journey_category="behavioural_noise"
+        metrics=_quiet_metrics(),
+        bank_policy=policy,
+    )
+    assert score.estimated_monthly_lift_gbp is None
+    assert score.arpu_source is None
+
+
+def test_estimated_lift_populated_when_arpu_matches() -> None:
+    """ARPU configured for this journey_category → sized lift populated.
+
+    Formula: affected_7d × week_to_month_multiplier × baseline_pct × ARPU."""
+    policy = _bank_policy_with_arpu({"behavioural_noise": 10.0})
+    metrics = ValueMetrics(
+        affected_customers_7d=100,
+        avg_events_per_affected_user=1.0,
+        vulnerable_cohort_share=0.0,
+        counterfactual_baseline_pct=0.2,
+    )
+    score = score_value(shape=_nominal_shape(), metrics=metrics, bank_policy=policy)
+    # 100 × 4.345 × 0.2 × 10 = 869.0
+    assert score.estimated_monthly_lift_gbp == pytest.approx(869.0, rel=1e-3)
+    assert score.arpu_source == "bank_policy"
+
+
+def test_conversion_rate_delta_always_populated() -> None:
+    """conversion_rate_delta is aliased to counterfactual_baseline_pct in
+    v0.2 — populated even when ARPU is missing (it's input-only)."""
+    score = score_value(
+        shape=_nominal_shape(),
+        metrics=ValueMetrics(100, 1.0, 0.0, 0.3),
+        bank_policy=_good_bank_policy(),
+    )
+    assert score.conversion_rate_delta == pytest.approx(0.3)
+    assert score.estimated_monthly_lift_gbp is None  # ARPU still missing
+
+
+def test_confidence_interval_is_none_in_v02() -> None:
+    """v0.2 ships point estimate only; CI fills in v0.3 once HOL-48
+    bootstrap fixture lands."""
+    policy = _bank_policy_with_arpu({"behavioural_noise": 10.0})
+    score = score_value(
+        shape=_nominal_shape(),
+        metrics=ValueMetrics(100, 1.0, 0.0, 0.2),
+        bank_policy=policy,
+    )
+    assert score.confidence_interval is None
+
+
+def test_arpu_change_busts_inputs_hash() -> None:
+    """Material change to ARPU must bust the audit hash — the sized output
+    differs, so the inputs that produced it must too."""
+    policy_a = _bank_policy_with_arpu({"behavioural_noise": 10.0})
+    policy_b = _bank_policy_with_arpu({"behavioural_noise": 25.0})
+    a = score_value(shape=_nominal_shape(), metrics=_quiet_metrics(), bank_policy=policy_a)
+    b = score_value(shape=_nominal_shape(), metrics=_quiet_metrics(), bank_policy=policy_b)
+    assert a.inputs_hash != b.inputs_hash
+
+
+def test_arpu_for_unrelated_journey_does_not_bust_hash() -> None:
+    """Changing ARPU for a journey THIS pack doesn't use must NOT bust the
+    hash — the actual sized output is unaffected, so the audit footprint
+    shouldn't claim otherwise."""
+    policy_a = _bank_policy_with_arpu({"choke_point": 10.0})
+    policy_b = _bank_policy_with_arpu({"choke_point": 50.0})
+    a = score_value(
+        shape=_nominal_shape(),  # behavioural_noise — no match either way
+        metrics=_quiet_metrics(),
+        bank_policy=policy_a,
+    )
+    b = score_value(
+        shape=_nominal_shape(), metrics=_quiet_metrics(), bank_policy=policy_b
+    )
+    assert a.inputs_hash == b.inputs_hash
+
+
+def test_sized_lift_reproducible() -> None:
+    """Same inputs → identical sized lift output, byte-stable."""
+    policy = _bank_policy_with_arpu({"behavioural_noise": 12.5})
+    metrics = ValueMetrics(250, 2.0, 0.1, 0.15)
+    a = score_value(shape=_nominal_shape(), metrics=metrics, bank_policy=policy)
+    b = score_value(shape=_nominal_shape(), metrics=metrics, bank_policy=policy)
+    assert a.estimated_monthly_lift_gbp == b.estimated_monthly_lift_gbp
+    assert a == b
+
+
+def test_arpu_zero_is_valid_yields_zero_lift() -> None:
+    """ARPU of 0 is allowed (deployment may have a customer-acquisition
+    journey where retained-revenue ARPU is zero). Sized output is zero,
+    not None — the engine HAS an ARPU stance, it just happens to be 0."""
+    policy = _bank_policy_with_arpu({"behavioural_noise": 0.0})
+    score = score_value(
+        shape=_nominal_shape(),
+        metrics=ValueMetrics(1000, 1.0, 0.0, 0.5),
+        bank_policy=policy,
+    )
+    assert score.estimated_monthly_lift_gbp == 0.0
+    assert score.arpu_source == "bank_policy"
 
 
 # --- cross-axis consistency with Risk ----------------------------------------

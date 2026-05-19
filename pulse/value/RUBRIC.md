@@ -138,4 +138,112 @@ audit-trail story simple ("this base tier, plus these adjustments,
 clamped at the top"). The numeric tier (0..3) is exposed for
 downstream sorting / 2×2 cell logic.
 
+## v0.2 — sized commercial estimate (PULSE-107)
+
+The categorical tier above is a prioritisation badge — it answers "which
+packs should the product team pay attention to first?" It does **not**
+answer "how much money is at stake?" v0.2 adds a sized estimate that
+HOL renderers can show alongside the badge so a CCO/COO sees magnitude,
+not just rank.
+
+**Output fields on `ValueScore` (v0.2):**
+
+| Field | Type | Populated when |
+|---|---|---|
+| `estimated_monthly_lift_gbp` | `float \| None` | `bank_policy.arpu_per_journey[shape.journey_category]` is configured |
+| `conversion_rate_delta` | `float \| None` | Always (aliased to `metrics.counterfactual_baseline_pct`) |
+| `confidence_interval` | `tuple[float, float] \| None` | Never in v0.2 — reserved for v0.3 (bootstrap fixture from HOL-48) |
+| `arpu_source` | `str \| None` | `"bank_policy"` when ARPU matched; `None` when missing |
+
+**Formula:**
+
+```
+estimated_monthly_lift_gbp
+  = affected_customers_7d
+  × weekly_to_monthly_multiplier
+  × counterfactual_baseline_pct
+  × arpu_per_journey[journey_category]
+```
+
+`weekly_to_monthly_multiplier ≈ 4.345` (= 365.25 / 12 / 7, avg days per
+month ÷ days per week). Lives in `value_methodology.yaml` under
+`commercial_estimate.weekly_to_monthly_multiplier`.
+
+### Worked example — sized lift on a COMMERCIAL-OPPORTUNITY pack
+
+Picking up Example 3 above (P0 + all four adjustments → COMMERCIAL-OPPORTUNITY),
+assuming the bank has configured `arpu_per_journey[choke_point] = £25/customer/month`:
+
+```
+affected_customers_7d         = 12,500
+weekly_to_monthly_multiplier  = 4.345
+counterfactual_baseline_pct   = 0.40
+arpu                          = 25.0
+
+monthly_lift_gbp = 12500 × 4.345 × 0.40 × 25.0
+                 ≈ £543,125 / month
+```
+
+ValueScore output (abbreviated):
+```python
+ValueScore(
+  tier="COMMERCIAL-OPPORTUNITY",
+  numeric_tier=3,
+  estimated_monthly_lift_gbp=543_125.0,
+  conversion_rate_delta=0.40,
+  confidence_interval=None,             # v0.2 ships point estimate only
+  arpu_source="bank_policy",
+  ...
+)
+```
+
+### Worked example — ARPU not configured for this journey
+
+Same pack as Example 3, but the bank's `bank_policy.yaml` has not
+configured ARPU for `journey_category=choke_point`:
+
+```python
+ValueScore(
+  tier="COMMERCIAL-OPPORTUNITY",         # categorical tier unaffected
+  numeric_tier=3,
+  estimated_monthly_lift_gbp=None,       # no ARPU → no sized output
+  conversion_rate_delta=0.40,            # still computable from inputs
+  confidence_interval=None,
+  arpu_source=None,
+  ...
+)
+```
+
+The renderer shows the badge as usual; the £ strip stays hidden until
+the deployment commits to per-journey ARPU. The engine deliberately
+fails open here — `None` is a valid state, not an error.
+
+### Why ARPU is in `bank_policy.yaml`, not `value_methodology.yaml`
+
+ARPU is per-deployment by nature (different banks, different product
+mixes, different commercial baselines). It belongs in the per-deployment
+contract, not the methodology rubric — same logic as the
+`affected_customers_7d_window` threshold. The methodology fixes the
+formula; the bank commits the inputs.
+
+### Why no confidence interval in v0.2
+
+Hubbard's principle (HOL-48): any sized estimate without an uncertainty
+band invites false precision. v0.2 ships the structure
+(`confidence_interval: tuple[float, float] | None`) but always returns
+`None` until the bootstrap fixture from HOL-48 lands. Surfacing a
+fabricated CI from the methodology's own assumptions would be worse
+than transparency about the gap. v0.3 fills this in once HOL-48 ships
+the engine-side bootstrap.
+
+### Why methodology version bumped to 0.2.0
+
+Per the in-place rule, any change to the public output of `score_value`
+is a methodology-version change — downstream consumers may pin against
+the version for audit reproducibility. The shape of `ValueScore`
+extends, the `inputs_hash` payload extends (now includes resolved
+`arpu_used`), and the `bank_policy.yaml` schema gains an optional
+section. All three are version-pinned changes.
+
 [PULSE-101]: https://cjipro.atlassian.net/browse/PULSE-101
+[PULSE-107]: https://cjipro.atlassian.net/browse/PULSE-107

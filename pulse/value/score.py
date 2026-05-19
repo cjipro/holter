@@ -32,15 +32,28 @@ _METHODOLOGY_PATH = Path(__file__).parent / "value_methodology.yaml"
 
 @dataclass(frozen=True)
 class ValueScore:
-    """Computed Value tier + audit footprint.
+    """Computed Value tier + audit footprint + (v0.2) sized commercial estimate.
 
-    `tier` is one of the methodology's closed enum (NOMINAL / WATCH /
-    SIGNIFICANT / COMMERCIAL-OPPORTUNITY). `numeric_tier` is the
-    underlying integer (0..3); useful for downstream sorting.
+    Categorical fields (v0.1):
+      `tier` is one of the methodology's closed enum (NOMINAL / WATCH /
+      SIGNIFICANT / COMMERCIAL-OPPORTUNITY). `numeric_tier` is the
+      underlying integer (0..3); useful for downstream sorting.
+      `adjustments_applied` lists which methodology adjustment keys fired.
+      `methodology_version` and `inputs_hash` together let any consumer
+      reproduce or audit the score later.
 
-    `adjustments_applied` lists which methodology adjustment keys fired.
-    `methodology_version` and `inputs_hash` together let any consumer
-    reproduce or audit the score later."""
+    Commercial estimate (v0.2 — PULSE-107):
+      `estimated_monthly_lift_gbp` — point estimate of monthly revenue
+      recoverable if the friction were removed. None when the deployment's
+      bank_policy.yaml lacks an ARPU entry for the relevant journey_category.
+      `conversion_rate_delta` — counterfactual lift in conversion rate (0..1);
+      aliased to ValueMetrics.counterfactual_baseline_pct in v0.2 and always
+      populated.
+      `confidence_interval` — reserved on the output but always None in v0.2;
+      v0.3 fills from bootstrap fixture (HOL-48 — engine-blocked).
+      `arpu_source` — provenance of the ARPU value used: "bank_policy" when
+      an entry matched the journey_category, None when no match (in which
+      case `estimated_monthly_lift_gbp` is also None)."""
 
     tier: str
     numeric_tier: int
@@ -48,6 +61,10 @@ class ValueScore:
     adjustments_applied: tuple[str, ...]
     methodology_version: str
     inputs_hash: str
+    estimated_monthly_lift_gbp: float | None = None
+    conversion_rate_delta: float | None = None
+    confidence_interval: tuple[float, float] | None = None
+    arpu_source: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -57,6 +74,14 @@ class ValueScore:
             "adjustments_applied": list(self.adjustments_applied),
             "methodology_version": self.methodology_version,
             "inputs_hash": self.inputs_hash,
+            "estimated_monthly_lift_gbp": self.estimated_monthly_lift_gbp,
+            "conversion_rate_delta": self.conversion_rate_delta,
+            "confidence_interval": (
+                list(self.confidence_interval)
+                if self.confidence_interval is not None
+                else None
+            ),
+            "arpu_source": self.arpu_source,
         }
 
 
@@ -117,7 +142,10 @@ def score_value(
     numeric_tier = _apply_adjustments(base_tier, adjustments_applied, methodology)
     tier_word = methodology["tier_words"][numeric_tier]
 
-    inputs_hash = _hash_inputs(shape, metrics, bank_policy)
+    arpu_used, arpu_source = _resolve_arpu(shape, bank_policy)
+    monthly_lift = _compute_monthly_lift(metrics, arpu_used, methodology)
+
+    inputs_hash = _hash_inputs(shape, metrics, bank_policy, arpu_used)
 
     return ValueScore(
         tier=tier_word,
@@ -126,6 +154,10 @@ def score_value(
         adjustments_applied=tuple(adjustments_applied),
         methodology_version=str(methodology["methodology_version"]),
         inputs_hash=inputs_hash,
+        estimated_monthly_lift_gbp=monthly_lift,
+        conversion_rate_delta=metrics.counterfactual_baseline_pct,
+        confidence_interval=None,
+        arpu_source=arpu_source,
     )
 
 
@@ -184,8 +216,48 @@ def _apply_adjustments(
     return min(int(methodology["max_tier"]), total)
 
 
+def _resolve_arpu(
+    shape: ValueShape, bank_policy: dict[str, Any]
+) -> tuple[float | None, str | None]:
+    """Look up ARPU for this shape's journey_category in the deployment's
+    bank_policy. Returns (arpu_value, source) or (None, None) when no entry
+    matches. Per the v0.2 commercial-estimate framework, missing ARPU is a
+    valid state — the categorical tier still computes; the sized lift just
+    surfaces as None."""
+    arpu_block = bank_policy.get("arpu_per_journey")
+    if not isinstance(arpu_block, dict):
+        return (None, None)
+    value = arpu_block.get(shape.journey_category)
+    if value is None or isinstance(value, bool):
+        return (None, None)
+    if not isinstance(value, (int, float)) or value < 0:
+        return (None, None)
+    return (float(value), "bank_policy")
+
+
+def _compute_monthly_lift(
+    metrics: ValueMetrics, arpu: float | None, methodology: dict[str, Any]
+) -> float | None:
+    """v0.2 point estimate: weekly_affected × week→month × baseline_pct × ARPU.
+    Returns None when ARPU is unavailable for the journey."""
+    if arpu is None:
+        return None
+    multiplier = float(
+        methodology["commercial_estimate"]["weekly_to_monthly_multiplier"]
+    )
+    return (
+        metrics.affected_customers_7d
+        * multiplier
+        * metrics.counterfactual_baseline_pct
+        * arpu
+    )
+
+
 def _hash_inputs(
-    shape: ValueShape, metrics: ValueMetrics, bank_policy: dict[str, Any]
+    shape: ValueShape,
+    metrics: ValueMetrics,
+    bank_policy: dict[str, Any],
+    arpu_used: float | None,
 ) -> str:
     payload = {
         "shape": {
@@ -204,6 +276,10 @@ def _hash_inputs(
         # don't bust the audit trail.
         "bank_policy_thresholds": bank_policy.get("escalation_thresholds", {}),
         "bank_policy_deployment_id": bank_policy.get("deployment_id"),
+        # The resolved ARPU value (not the full per-journey block) is what
+        # actually drove the sized output — hash that so changing an
+        # unrelated journey's ARPU doesn't bust this pack's audit trail.
+        "arpu_used": arpu_used,
     }
     serialised = json.dumps(payload, sort_keys=True, default=str).encode("utf-8")
     return hashlib.sha256(serialised).hexdigest()

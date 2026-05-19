@@ -12,7 +12,7 @@
 #
 # Filed under PULSE-101.
 
-methodology_version: 0.1.0
+methodology_version: 0.2.0
 
 # Closed enum of Value tier-words. Order is severity-ascending — used by
 # score.py to convert numeric tier (0..3) back to a tier-word. Extending
@@ -91,3 +91,31 @@ adjustments:
 
 # Maximum numeric tier — clamps the sum. Set to len(tier_words) - 1.
 max_tier: 3
+
+# ─────────────────────────────────────────────────────────────────────────────
+# v0.2 — Commercial sizing on the Value tier (PULSE-107).
+#
+# The categorical tier above (NOMINAL/WATCH/SIGNIFICANT/COMMERCIAL-OPPORTUNITY)
+# is a prioritisation badge — it doesn't carry magnitude. v0.2 adds a sized
+# commercial estimate (£/month) so HOL renderers can show a CCO/COO what's at
+# stake, not just which packs to pay attention to. The estimate is optional —
+# if the deployment hasn't configured ARPU per journey_category, the engine
+# returns None for the sized output and the categorical tier is unaffected.
+#
+# Formula:
+#   estimated_monthly_lift_gbp
+#     = affected_customers_7d
+#     × weekly_to_monthly_multiplier        # weekly window → monthly equivalent
+#     × counterfactual_baseline_pct         # fraction recoverable if friction removed
+#     × arpu_per_journey[journey_category]  # bank-committed per-customer monthly revenue
+#
+# `weekly_to_monthly_multiplier ≈ 4.345` ≈ 365.25/12/7 (avg days per month
+# divided by days per week).
+commercial_estimate:
+  weekly_to_monthly_multiplier: 4.345
+
+  # v0.2 ships point estimate only. Confidence interval is reserved on the
+  # output dataclass but always returns None until the bootstrap fixture from
+  # HOL-48 ships and provides per-input sampling distributions. v0.3 fills
+  # this in.
+  confidence_interval_method: "v0.2_point_estimate_only"

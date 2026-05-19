@@ -73,6 +73,11 @@ def validate_bank_policy(cfg: Any) -> None:
     _validate_escalation_thresholds(cfg["escalation_thresholds"])
     _validate_policy_areas(cfg["policy_areas"])
     _validate_vulnerable_cohort_extensions(cfg["vulnerable_cohort_extensions"])
+    # arpu_per_journey is optional (introduced in v0.2 commercial-estimate
+    # framework — PULSE-107). Older deployments without the block stay valid;
+    # the Value methodology's sized lift surfaces as None on every pack.
+    if "arpu_per_journey" in cfg:
+        _validate_arpu_per_journey(cfg["arpu_per_journey"])
 
 
 def _is_placeholder(value: Any) -> bool:
@@ -167,6 +172,31 @@ def _validate_policy_areas(policy_areas: Any) -> None:
                 f"policy_areas[{i}].regulatory_taxonomy must be one of "
                 f"{sorted(_KNOWN_REGULATORY_TAXONOMIES)}, got "
                 f"{area['regulatory_taxonomy']!r}"
+            )
+
+
+def _validate_arpu_per_journey(arpu: Any) -> None:
+    if not isinstance(arpu, dict):
+        raise BankPolicyError(
+            f"arpu_per_journey must be a mapping, got {type(arpu).__name__}"
+        )
+    for journey, value in arpu.items():
+        if not isinstance(journey, str) or not journey:
+            raise BankPolicyError(
+                f"arpu_per_journey keys must be non-empty strings, got {journey!r}"
+            )
+        if _is_placeholder(value):
+            raise BankPolicyError(
+                f"arpu_per_journey[{journey!r}] is an unresolved placeholder"
+            )
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise BankPolicyError(
+                f"arpu_per_journey[{journey!r}] must be a non-negative number, "
+                f"got {value!r}"
+            )
+        if value < 0:
+            raise BankPolicyError(
+                f"arpu_per_journey[{journey!r}] must be non-negative, got {value!r}"
             )
 
 

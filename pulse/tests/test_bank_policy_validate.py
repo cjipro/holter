@@ -203,6 +203,77 @@ def test_validate_does_not_mutate_input() -> None:
     assert cfg == snapshot
 
 
+# --- arpu_per_journey (v0.2 commercial-estimate framework — PULSE-107) ------
+
+
+def test_arpu_block_omitted_is_valid() -> None:
+    """Older deployments without arpu_per_journey stay valid — sized lift
+    just returns None on every pack."""
+    cfg = _good_cfg()
+    assert "arpu_per_journey" not in cfg
+    validate_bank_policy(cfg)
+
+
+def test_arpu_empty_dict_is_valid() -> None:
+    cfg = _good_cfg()
+    cfg["arpu_per_journey"] = {}
+    validate_bank_policy(cfg)
+
+
+def test_arpu_with_journeys_is_valid() -> None:
+    cfg = _good_cfg()
+    cfg["arpu_per_journey"] = {
+        "behavioural_noise": 8.50,
+        "context_loss": 22.0,
+        "choke_point": 0,  # zero is allowed
+    }
+    validate_bank_policy(cfg)
+
+
+def test_arpu_not_mapping_rejected() -> None:
+    bad = _good_cfg()
+    bad["arpu_per_journey"] = [{"behavioural_noise": 10.0}]
+    with pytest.raises(BankPolicyError, match="arpu_per_journey must be a mapping"):
+        validate_bank_policy(bad)
+
+
+def test_arpu_negative_value_rejected() -> None:
+    bad = _good_cfg()
+    bad["arpu_per_journey"] = {"behavioural_noise": -5.0}
+    with pytest.raises(BankPolicyError, match="non-negative"):
+        validate_bank_policy(bad)
+
+
+def test_arpu_string_value_rejected() -> None:
+    bad = _good_cfg()
+    bad["arpu_per_journey"] = {"behavioural_noise": "10"}
+    with pytest.raises(BankPolicyError, match="non-negative number"):
+        validate_bank_policy(bad)
+
+
+def test_arpu_bool_value_rejected() -> None:
+    """Python bool is an int subclass; reject explicitly so True doesn't
+    silently mean 1.0 ARPU."""
+    bad = _good_cfg()
+    bad["arpu_per_journey"] = {"behavioural_noise": True}
+    with pytest.raises(BankPolicyError, match="non-negative number"):
+        validate_bank_policy(bad)
+
+
+def test_arpu_placeholder_rejected() -> None:
+    bad = _good_cfg()
+    bad["arpu_per_journey"] = {"behavioural_noise": "<TBD>"}
+    with pytest.raises(BankPolicyError, match="unresolved placeholder"):
+        validate_bank_policy(bad)
+
+
+def test_arpu_empty_journey_key_rejected() -> None:
+    bad = _good_cfg()
+    bad["arpu_per_journey"] = {"": 10.0}
+    with pytest.raises(BankPolicyError, match="non-empty strings"):
+        validate_bank_policy(bad)
+
+
 # --- Compliance lint: no real-bank name in the shipped template -------------
 
 

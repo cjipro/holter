@@ -61,3 +61,16 @@ policy_areas: []
 #     description: <one-line description>
 #     rationale: <why this cohort warrants vulnerable-cohort treatment>
 vulnerable_cohort_extensions: []
+
+# Per-deployment ARPU (£/customer/month) by friction journey_category, used
+# by the Value methodology's v0.2 commercial-estimate output (PULSE-107) to
+# compute estimated_monthly_lift_gbp. Omitting the block entirely is valid
+# — categorical Value tier still computes; sized lift surfaces as None on
+# every pack. This keeps the engine deployable before the bank has
+# committed to per-journey commercial baselines.
+#
+# Key is the friction journey_category (e.g. behavioural_noise, context_loss,
+# choke_point). Value is a non-negative number in GBP-per-customer-per-month.
+# v0.3 may refine this to per-journey-id once real_bank delivers
+# segmented revenue baselines.
+arpu_per_journey: {}

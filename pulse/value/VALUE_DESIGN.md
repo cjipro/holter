@@ -111,6 +111,8 @@ disproportionately help them (prioritisation signal).
 ## Output
 
 `ValueScore` (frozen dataclass) carries:
+
+**Categorical (v0.1):**
 - `tier` (closed enum tier-word)
 - `numeric_tier` (0..3)
 - `base_tier` (for diff explanation)
@@ -118,8 +120,20 @@ disproportionately help them (prioritisation signal).
 - `methodology_version` (pinned from `value_methodology.yaml`)
 - `inputs_hash` (SHA-256 over the deployment-affecting inputs)
 
+**Sized commercial estimate (v0.2 — PULSE-107):**
+- `estimated_monthly_lift_gbp` — point estimate, or `None` when
+  `bank_policy.arpu_per_journey` doesn't cover this `journey_category`
+- `conversion_rate_delta` — aliased to `counterfactual_baseline_pct`,
+  always populated
+- `confidence_interval` — reserved on the dataclass; always `None` in
+  v0.2 (filled in v0.3 once HOL-48 bootstrap fixture ships)
+- `arpu_source` — `"bank_policy"` when ARPU resolved, `None` when missing
+
 The audit footprint is symmetric with Risk's — both methodologies
 reproduce identically from the same input bytes + methodology version.
+The v0.2 sized lift is also reproducible: the resolved ARPU value
+participates in `inputs_hash` so material changes to the bank's
+per-journey ARPU bust the audit trail.
 
 ## Things this methodology deliberately does NOT do
 
@@ -130,11 +144,12 @@ reproduce identically from the same input bytes + methodology version.
   return.
 - **No reading the Chronicle library** — Chronicle is a Risk-axis
   artefact (enforcement precedent), not a Value-axis one.
-- **No revenue or basis-point estimation at v0** — the methodology
-  is tier-based, not currency-based. v0.2 may add a `gbp_at_stake`
-  scalar once the bank's commercial-impact model is in place; the
-  v0.1 axis is intentionally cohort/population/frequency-based to
-  ship without needing the bank's price book.
+- **No revenue or basis-point estimation at v0.1** — v0.1 was
+  tier-based, not currency-based. **Resolved in v0.2** (PULSE-107):
+  sized monthly lift in GBP now surfaces on `ValueScore` when the
+  deployment has configured `arpu_per_journey` in `bank_policy.yaml`.
+  Engine still ships clean when ARPU is missing — sized output is
+  `None`, categorical tier is unaffected.
 - **No LLM inference** — v1 is non-LLM runtime per the architectural
   lock.
 - **No pack-author override** — packs declare the shape; the engine
@@ -147,10 +162,17 @@ reproduce identically from the same input bytes + methodology version.
 - any change to `tier_words` (adding / removing / renaming tiers)
 - any change to `base_tier_by_severity` mappings
 - any change to adjustment keys, thresholds, or `delta` values
+- any change to the `commercial_estimate` block (formula, multiplier,
+  or CI method) — added in v0.2
 
 Decision packs pin `required_pulse_version` in their metadata —
 methodology-version changes surface as compatibility failures at load
 time.
+
+v0.2.0 = v0.1.0 + sized commercial estimate (PULSE-107). Categorical
+tier output is byte-stable across the bump for any pack with quiet
+metrics. Only consumers reading the new fields need a version-aware
+code path.
 
 ## v0.1 acknowledged limits
 
