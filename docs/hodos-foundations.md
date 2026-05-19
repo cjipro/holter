@@ -13,10 +13,12 @@
 | | |
 |---|---|
 | Surfaces design-locked | **2 of 5** — HOL-3 Workspace (composite 7.40) · HOL-4 Pulse Home (composite 8.20) |
-| Surfaces remaining | HOL-6 MLOps Console (next) · HOL-5 Platform API · HOL-7 Pulse Monitor (gated) |
-| Pattern travel | Pulse Home reuses Workspace helpers via direct module import → **one hop proven** |
+| Surfaces v0 shipped, not yet locked | **1** — HOL-6 MLOps Console (composite pending design-panel) |
+| Surfaces remaining | HOL-5 Platform API · HOL-7 Pulse Monitor (gated) |
+| Pattern travel | Workspace primitives now consumed by HOL-4 AND HOL-6 → **two-hop travel** (one short of DHH's "3+ surfaces" rule for extraction-eligibility) |
 | Process artifacts in use | Design-panel review · PR-panel review · 5-dimension scorecard · fix-first discipline |
 | Cross-panel verdict on Hodos extraction (2026-05-19) | 1 READY-with-conditions · 6 NEEDS WORK · 2 BAD CANDIDATE — consensus: **not yet, but primitives are real** |
+| Pre-extraction debt | **`render_holter.py` is now imported by 2 sibling renderers** — Cannon's condition for HOL-35 `_shared.py` extraction is now concrete, not theoretical. |
 
 ---
 
@@ -178,3 +180,4 @@ Until then: **this document IS the answer to "are the foundations available?"** 
 | Date | Trigger | Changes |
 |---|---|---|
 | 2026-05-19 | Initial draft after Hodos panel R1 (Evans/Hohpe/Martin · Yegge/DHH/Spolsky · Wickham/Hintjens/Katz) | First inventory of 8 proven primitives + 8 candidates + open boundary questions |
+| 2026-05-19 (+2h) | HOL-6 MLOps Console v0 shipped at `d477a47` | **Promotion**: `render_box` + `body_*` family + 4-layer discipline + `headline_*` vocabulary + CSS design-tokens + static-emit pattern + glossary infrastructure all confirmed across 3rd surface — these go from "proven via 1 hop" to "proven via 2 hops" (one short of DHH's 3-surface bar). **New candidate**: structured narrative paragraph layer (`.mlops-narrative` CSS class + "What changed · For whom · Evidence · Response" template) — one consumer; needs HOL-5 or HOL-7 confirmation. **Confirmed not generalisable yet**: `body_evidence_cards`, `_DIAGNOSIS_COLORS`, `_VALUE_COLORS`, `headline_pack` — HOL-6 didn't need any of these. **Pre-extraction debt now concrete**: 3 renderers import from `render_holter.py` — HOL-35 `_shared.py` extraction is no longer hypothetical. |
