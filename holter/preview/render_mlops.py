@@ -39,10 +39,10 @@ OUT_DIR = REPO / "dist" / "preview" / "mlops"
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-# Reuse Workspace primitives. Per Cannon's PR-panel ruling this is the
-# 3rd renderer importing from render_holter — HOL-35 _shared.py extraction
-# should immediately follow this v0 ship.
-from holter.preview.render_holter import (  # noqa: E402
+# HOL-35: import primitives from _shared, not from render_holter — so a
+# broken Workspace import doesn't cascade to MLOps Console (Cannon's
+# hand-carry concern). render_holter is no longer in the import path.
+from holter.preview._shared import (  # noqa: E402
     discover_packs,
     get_pack_cell,
     short_hash,
@@ -507,9 +507,9 @@ def render_page() -> str:
         + render_synthesis_pane(packs)
     )
 
-    # Reuse Workspace CSS for box discipline + tooltips + glossary panel
-    # by importing it. Cheap copy here for v0; HOL-35 will consolidate.
-    from holter.preview.render_holter import CSS as WORKSPACE_CSS
+    # HOL-35: CSS now lives in _shared (was in render_holter). MLOps no
+    # longer imports anything from render_holter — Cannon's condition met.
+    from holter.preview._shared import CSS as WORKSPACE_CSS
 
     return f"""<!doctype html>
 <html lang="en">

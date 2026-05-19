@@ -33,8 +33,11 @@ OUT_DIR = REPO / "dist" / "preview" / "home"
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-# Reuse Workspace helpers — same data fabric, different presentation
-from holter.preview.render_holter import (  # noqa: E402
+# HOL-35: import shared primitives from _shared (not from render_holter).
+# Per Cannon's PR-panel ruling, no renderer should depend on another
+# renderer for helpers — _shared is the single source of truth so a
+# broken render_holter doesn't cascade to Pulse Home.
+from holter.preview._shared import (  # noqa: E402
     discover_packs,
     get_pack_cell,
     headline_pack,
