@@ -269,13 +269,25 @@ def render_confidence_chip(delta: dict) -> str:
     )
 
 
-def render_delta_strip(delta: dict, preview_text: str = "") -> str:
-    """One-line meta strip: time-since-surfaced · tier-change · preview."""
+def render_delta_strip(delta: dict, preview_text: str = "",
+                       suppress_change: bool = False) -> str:
+    """One-line meta strip: time-since-surfaced · tier-change · preview.
+
+    HOL-30: `suppress_change=True` hides the tier-change chip (used by
+    render_flagged_feed to avoid 3-in-a-row of identical "↑ escalated from X"
+    signals collapsing into visual noise per Silver's R2 critique).
+    """
     preview_html = f'<span>· {preview_text}</span>' if preview_text else ""
+    change_html = ""
+    if not suppress_change:
+        change_html = (
+            f'<span style="color:{delta["change_color"]};">'
+            f'· {delta["change"]}</span>'
+        )
     return (
         f'<div class="delta-strip">'
         f'<span>surfaced {delta["time"]}</span>'
-        f'<span style="color:{delta["change_color"]};">· {delta["change"]}</span>'
+        f'{change_html}'
         f'{preview_html}'
         f'</div>'
     )
@@ -724,7 +736,8 @@ def render_feed_card(*, tag: str, tag_color: str, headline: str, summary: str,
                      tier: str | None = None, tier_dim: str = "action",
                      meta_left: str = "", meta_right: str = "",
                      cta_label: str = "OPEN →", accent: str = "var(--border)",
-                     delta: dict | None = None, preview_text: str = "") -> str:
+                     delta: dict | None = None, preview_text: str = "",
+                     suppress_change: bool = False) -> str:
     """Generic feed card — reused for FLAGGED, AWAITING REVIEW, MLOPS.
 
     HOL-24: optional `delta` adds confidence chip beside tier badge AND
@@ -739,7 +752,10 @@ def render_feed_card(*, tag: str, tag_color: str, headline: str, summary: str,
             f'{tooltip_token(tier_dim, tier)}</span>'
         )
     confidence_html = render_confidence_chip(delta) if delta else ""
-    delta_html = render_delta_strip(delta, preview_text) if delta else ""
+    delta_html = (
+        render_delta_strip(delta, preview_text, suppress_change=suppress_change)
+        if delta else ""
+    )
     return f"""
 <a class="feed-card" style="border-left-color:{accent}; text-decoration:none; color:inherit;"
    href="http://localhost:8504/" target="_blank">
@@ -767,8 +783,22 @@ def render_flagged_feed(flagged: list[dict], hero: dict) -> str:
     so the cards don't read as the same recommendation pasted three times.
     """
     grid = select_flagged_grid(flagged, hero, n=3)
+    # HOL-30 — pre-compute deltas so we can suppress duplicate `change` chips.
+    # First card with a given change keeps it; subsequent cards with the same
+    # change render without the chip (Silver: "render the indicator on only
+    # the FIRST card; the rest get suppressed").
+    deltas = [card_delta(s["pack"]["meta"]["pack_name"]) for s in grid]
+    seen_changes: set[str] = set()
+    suppress_flags: list[bool] = []
+    for d in deltas:
+        if d["change"] in seen_changes:
+            suppress_flags.append(True)
+        else:
+            seen_changes.add(d["change"])
+            suppress_flags.append(False)
+
     cards = []
-    for sig in grid:
+    for sig, delta, suppress in zip(grid, deltas, suppress_flags):
         pack = sig["pack"]
         cs = sig["cell_score"]
         tier = cs.action_tier
@@ -780,7 +810,6 @@ def render_flagged_feed(flagged: list[dict], hero: dict) -> str:
         summary = varied or cs.placement_recommendation
         if len(summary) > 180:
             summary = summary[:177] + "…"
-        delta = card_delta(pack["meta"]["pack_name"])
         preview = f"{delta['n_findings']} sub-findings"
         cards.append(render_feed_card(
             tag="FLAGGED",
@@ -795,6 +824,7 @@ def render_flagged_feed(flagged: list[dict], hero: dict) -> str:
             accent=accent,
             delta=delta,
             preview_text=preview,
+            suppress_change=suppress,
         ))
     if not cards:
         return ""
