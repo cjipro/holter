@@ -369,6 +369,75 @@ def classify_synthesis_severity(n_llm: int) -> str:
     return "ACUTE"
 
 
+def classify_row_severity_drift(delta: int) -> str:
+    """Per-row drift severity for HOL-45 filter. Same thresholds as
+    classify_drift_severity but applied to a single row's delta."""
+    return classify_drift_severity(delta)
+
+
+def attestation_severity(attestation: str) -> str:
+    """HOL-45 — per-row severity for SYNTHESIS filter. PENDING covers both
+    self_declared and attestation_pending; everything else is NOMINAL."""
+    if attestation in ("self_declared", "attestation_pending"):
+        return "PENDING"
+    return "NOMINAL"
+
+
+# HOL-45 — threshold rule explanations. Keyed by severity OR by metric name.
+# Surfaced via native `title` on the badge or fairness number. Plain-language
+# so a non-statistician can decode (Gigerenzer's R1 + R2 ask).
+THRESHOLD_RULES: dict[str, str] = {
+    # Drift severity rules
+    "DRIFT_NOMINAL":  "Drift NOMINAL = |delta| < 2pp (no material change)",
+    "DRIFT_WATCH":    "Drift WATCH = 2-5pp delta (observe; no action required)",
+    "DRIFT_ESCALATE": "Drift ESCALATE = 5-10pp delta (review baseline; flag for next cycle)",
+    "DRIFT_ACUTE":    "Drift ACUTE = |delta| >= 10pp (recalibrate threshold; hold deployment)",
+    # Lineage severity rules
+    "LINEAGE_NOMINAL":  "Lineage NOMINAL = 0 broken chains (all hashes verified)",
+    "LINEAGE_ESCALATE": "Lineage ESCALATE = 1 broken chain (re-seal; review anchor source)",
+    "LINEAGE_ACUTE":    "Lineage ACUTE = 2+ broken chains (halt promotions; trace propagation)",
+    # Synthesis severity rules
+    "SYNTHESIS_NOMINAL":  "Synthesis NOMINAL = 0 LLM_AUGMENTED in prod path",
+    "SYNTHESIS_ESCALATE": "Synthesis ESCALATE = 1 LLM_AUGMENTED pack flagged (v1 gate violation)",
+    "SYNTHESIS_ACUTE":    "Synthesis ACUTE = 2+ LLM_AUGMENTED packs (governance backlog)",
+    # Status rules
+    "VERIFIED": "VERIFIED = chain hash matches anchor; no tampering detected",
+    "BROKEN":   "BROKEN = chain hash mismatch; lineage integrity compromised",
+    "STABLE":   "STABLE = chain depth and parents unchanged over last 24h",
+    # Attestation rules
+    "self_declared":          "self_declared = pack author asserted compliance; independent assessment required",
+    "attestation_pending":    "attestation_pending = newly-onboarded pack awaiting MRM sign-off",
+    "independently_assessed": "independently_assessed = second reviewer confirmed; not yet certified",
+    "certified":              "certified = sealed for prod; quarterly recertification due",
+    # Fairness metric rules
+    "demographic_parity":  ("demographic_parity ∈ [0,1]; 1 = perfectly equal selection rates across cohorts. "
+                            "Floor 0.85 = 15pp tolerance. Below floor = ACUTE."),
+    "equalised_odds":      ("equalised_odds ∈ [0,1]; 1 = equal TPR and FPR across cohorts. "
+                            "Floor 0.80 = 20pp tolerance. Below floor = ACUTE."),
+    "calibration_by_cohort": ("calibration_by_cohort ∈ [0,1]; 1 = predicted probability matches observed rate "
+                              "per cohort. Floor 0.90."),
+}
+
+
+def render_filter_strip(scope: str, options: list[tuple[str, str]],
+                        default: str = "all") -> str:
+    """HOL-45 — pane-scoped severity filter strip. Each button has
+    data-filter-scope=<pane> + data-filter-value=<severity>. JS handler
+    hides rows in the same scope whose data-severity doesn't match."""
+    btns = "".join(
+        f'<button class="pane-filter-btn" data-filter-scope="{scope}" '
+        f'data-filter-value="{val}" '
+        f'{"data-active=\"true\"" if val == default else ""} '
+        f'type="button">{_e(label)}</button>'
+        for val, label in options
+    )
+    return (
+        f'<div class="pane-filter-strip" data-filter-scope="{scope}">'
+        f'<span class="pane-filter-label">filter</span>{btns}'
+        f'</div>'
+    )
+
+
 def fairness_narrative(pack_name: str, fair: dict) -> str:
     """One-paragraph fairness narrative for the deviation alert."""
     worst_metric, worst_value = min(
@@ -759,6 +828,58 @@ body[data-window="30d"] .drift-cell-spark svg[data-window="30d"] {
   letter-spacing: 1.2px; text-transform: uppercase;
   text-align: right; margin-top: -8px;
 }
+
+/* HOL-45 — Filter/sort + threshold transparency. Burt: "moment a reviewer
+   wants to see 'only ACUTE rows' the surface is gravel." Gigerenzer:
+   "0.85 GINI needs a stats card the surface doesn't provide." */
+
+/* (a) Filter strip — sits at the top of each filterable pane body */
+.pane-filter-strip {
+  display: flex; gap: 4px; align-items: center;
+  padding: 4px 0 8px 0;
+  border-bottom: 1px dashed var(--border);
+  margin-bottom: 6px;
+  font-family: var(--mono); font-size: 9px;
+}
+.pane-filter-label { color: var(--text-3); letter-spacing: 0.6px;
+                     text-transform: uppercase; margin-right: 4px; }
+.pane-filter-btn {
+  font-family: var(--mono); font-size: 9px; font-weight: 700;
+  letter-spacing: 0.6px;
+  padding: 1px 6px;
+  background: transparent;
+  color: var(--text-3);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all 100ms ease;
+}
+.pane-filter-btn:hover { color: var(--text); border-color: var(--text-2); }
+.pane-filter-btn[data-active="true"] {
+  background: rgba(0, 183, 245, 0.15);
+  color: var(--blue); border-color: var(--blue);
+}
+.pane-row-hidden { display: none !important; }
+
+/* (b) Sortable column headers in SYNTHESIS table */
+.govern-table th.sortable {
+  cursor: pointer; user-select: none;
+  position: relative; padding-right: 14px;
+}
+.govern-table th.sortable:hover { color: var(--text-2); }
+.govern-table th.sortable::after {
+  content: " ↕"; opacity: 0.4; font-size: 9px;
+}
+.govern-table th.sortable[data-sort="asc"]::after  { content: " ↑"; opacity: 1;
+                                                     color: var(--blue); }
+.govern-table th.sortable[data-sort="desc"]::after { content: " ↓"; opacity: 1;
+                                                     color: var(--blue); }
+
+/* (c) Threshold tooltip — leverage native title; styled cursor hint */
+.threshold-token {
+  cursor: help;
+  border-bottom: 1px dotted var(--text-3);
+}
 """
 
 
@@ -839,13 +960,19 @@ def render_drift_pane(packs: list[dict]) -> str:
             spark_parts.append(svg_tagged)
         spark = "".join(spark_parts)
         # HOL-39: cell-id is now a click-target; row carries data-cell-id
+        # HOL-45: per-row severity for filter + delta value carries threshold tooltip
+        row_sev = classify_row_severity_drift(delta)
+        delta_tooltip = THRESHOLD_RULES.get(f"DRIFT_{row_sev}", "")
         drift_rows.append(
-            f'<div class="drift-cell cell-row" data-cell-id="{cell}">'
+            f'<div class="drift-cell cell-row pane-filterable" '
+            f'data-cell-id="{cell}" data-severity="{row_sev}" '
+            f'data-filter-scope="drift">'
             f'<span class="drift-cell-label">'
             f'<a class="cell-link" href="#cell-{cell}" data-cell-id="{cell}">cell {cell}</a>'
             f' · {sig}</span>'
             f'<span class="drift-cell-spark">{spark}</span>'
-            f'<span class="drift-cell-val" style="color:{color};">'
+            f'<span class="drift-cell-val threshold-token" '
+            f'style="color:{color};" title="{_e(delta_tooltip)}">'
             f'{delta:+d}pp</span>'
             f'</div>'
         )
@@ -862,6 +989,13 @@ def render_drift_pane(packs: list[dict]) -> str:
     elif drift_sev == "NOMINAL":
         narrative = render_severity_narrative("NOMINAL", "")
 
+    # HOL-45 — pane filter strip
+    drift_filter = render_filter_strip(
+        scope="drift",
+        options=[("all", "ALL"), ("ACUTE", "ACUTE only"),
+                 ("ESCALATE", "≥ESCALATE"), ("WATCH", "≥WATCH")],
+    )
+
     return render_box(
         header=box_header("DRIFT MONITORS", "14-day window"),
         accent_color="var(--blue)",
@@ -874,7 +1008,7 @@ def render_drift_pane(packs: list[dict]) -> str:
             meta_right=NOW,
             progress_pct=min(100, abs(worst_delta) * 10),
         ),
-        body=legend_html + "".join(drift_rows) + narrative,
+        body=drift_filter + legend_html + "".join(drift_rows) + narrative,
         footer=box_footer(
             "frictionbench v0.1", NOW, live=True,
             note="Drift baselines from pulse.frictionbench.scoring",
@@ -963,19 +1097,33 @@ def render_lineage_pane(packs: list[dict]) -> str:
             f'{"".join(chain_rows)}'
             f'</div>'
         )
+        # HOL-45: per-row severity (BROKEN→ACUTE, VERIFIED→NOMINAL) +
+        # threshold tooltip on the chain_status badge
+        row_sev = "ACUTE" if ls["chain_status"] == "BROKEN" else "NOMINAL"
+        status_tip = THRESHOLD_RULES.get(ls["chain_status"], "")
         detail_rows.append(
-            f'<div class="drift-cell cell-row" data-cell-id="{cell}">'
+            f'<div class="drift-cell cell-row pane-filterable" '
+            f'data-cell-id="{cell}" data-severity="{row_sev}" '
+            f'data-filter-scope="lineage">'
             f'<span class="drift-cell-label">'
             f'<a class="cell-link" href="#cell-{cell}" data-cell-id="{cell}">cell {cell}</a>'
             f' · <a class="hash-link" href="#" data-chain-toggle="{cell}" '
             f'title="Expand upstream chain">sha:{sha_short}</a></span>'
-            f'<span class="govern-badge" style="color:{ls["color"]};">'
+            f'<span class="govern-badge threshold-token" '
+            f'style="color:{ls["color"]};" title="{_e(status_tip)}">'
             f'{ls["chain_status"]}</span>'
             f'<span class="drift-cell-val" style="color:var(--text-3); width:auto; '
             f'text-align:right; font-size:9px;">depth {ls["chain_depth"]}</span>'
             f'</div>'
             f'{chain_html}'
         )
+
+    # HOL-45 — pane filter strip
+    lineage_filter = render_filter_strip(
+        scope="lineage",
+        options=[("all", "ALL"), ("ACUTE", "BROKEN only"),
+                 ("NOMINAL", "VERIFIED only")],
+    )
 
     return render_box(
         header=box_header("LINEAGE VERIFIER", "hash-chain integrity"),
@@ -990,7 +1138,7 @@ def render_lineage_pane(packs: list[dict]) -> str:
             progress_pct=chain_health_pct,
         ),
         # HOL-40 — severity driven by BROKEN count (0 → NOMINAL → single-token render)
-        body="".join(detail_rows) + render_severity_narrative(
+        body=lineage_filter + "".join(detail_rows) + render_severity_narrative(
             classify_lineage_severity(n_broken),
             (f'<strong>What changed:</strong> {n_broken} pack chain'
              f'{"s" if n_broken != 1 else ""} reported BROKEN. '
@@ -1036,23 +1184,41 @@ def render_synthesis_pane(packs: list[dict]) -> str:
         else:
             actions_cell = '<td><span class="govern-actions-none">—</span></td>'
         # HOL-39: row carries data-cell-id; cell column is the click-target
+        # HOL-45: per-row severity for filter + threshold tooltip on attestation
+        row_sev = attestation_severity(g["attestation"])
+        att_tip = THRESHOLD_RULES.get(g["attestation"], "")
+        mode_tip = THRESHOLD_RULES.get(g["synthesis_mode"], "")  # may be empty
         table_rows.append(
-            f'<tr class="cell-row" data-cell-id="{cell}" data-row-state="pending">'
+            f'<tr class="cell-row pane-filterable" data-cell-id="{cell}" '
+            f'data-row-state="pending" data-severity="{row_sev}" '
+            f'data-filter-scope="synthesis" '
+            f'data-sort-cell="{cell}" '
+            f'data-sort-mode="{_e(g["synthesis_mode"])}" '
+            f'data-sort-attestation="{_e(g["attestation"])}" '
+            f'data-sort-reviewed="{_e(g["reviewed_date"])}">'
             f'<td><a class="cell-link" href="#cell-{cell}" data-cell-id="{cell}">cell {cell}</a></td>'
-            f'<td><span class="govern-badge" style="color:{g["mode_color"]};">'
+            f'<td><span class="govern-badge threshold-token" '
+            f'style="color:{g["mode_color"]};" title="{_e(mode_tip)}">'
             f'{g["synthesis_mode"]}</span></td>'
-            f'<td><span class="govern-badge" style="color:{g["att_color"]};">'
+            f'<td><span class="govern-badge threshold-token" '
+            f'style="color:{g["att_color"]};" title="{_e(att_tip)}">'
             f'{g["attestation"]}</span></td>'
             f'<td>{_e(g["reviewer"])}</td>'
             f'<td>{_e(g["reviewed_date"])}</td>'
             f'{actions_cell}'
             f'</tr>'
         )
+    # HOL-45 — sortable column headers; data-sort-key matches the
+    # data-sort-* attrs on rows, JS handler reorders tbody children.
     table_html = (
-        '<table class="govern-table">'
+        '<table class="govern-table" data-sortable-table="synthesis">'
         '<thead><tr>'
-        '<th>cell</th><th>mode</th><th>attestation</th>'
-        '<th>reviewer</th><th>reviewed</th><th>actions</th>'
+        '<th class="sortable" data-sort-key="cell">cell</th>'
+        '<th class="sortable" data-sort-key="mode">mode</th>'
+        '<th class="sortable" data-sort-key="attestation">attestation</th>'
+        '<th>reviewer</th>'
+        '<th class="sortable" data-sort-key="reviewed">reviewed</th>'
+        '<th>actions</th>'
         '</tr></thead>'
         f'<tbody>{"".join(table_rows)}</tbody>'
         '</table>'
@@ -1074,6 +1240,12 @@ def render_synthesis_pane(packs: list[dict]) -> str:
          f'hold packs out of prod; route through governance review before enabling.')
     )
 
+    # HOL-45 — pane filter strip for SYNTHESIS
+    synth_filter = render_filter_strip(
+        scope="synthesis",
+        options=[("all", "ALL"), ("PENDING", "PENDING only")],
+    )
+
     return render_box(
         header=box_header("SYNTHESIS GOVERNANCE", "per-pack attestation"),
         accent_color="var(--green)" if n_llm == 0 else "var(--amber)",
@@ -1082,7 +1254,7 @@ def render_synthesis_pane(packs: list[dict]) -> str:
             (str(n_llm),       "LLM_AUGMENTED", "var(--red)"),
             (str(n_certified), "CERTIFIED",     "var(--teal)"),
         ]),
-        body=table_html + gate_note,
+        body=synth_filter + table_html + gate_note,
         footer=box_footer(
             "synthesis v0.1", NOW, live=True,
             note=f"All packs declare synthesis_mode · attestation pinned per review",
@@ -1396,6 +1568,77 @@ window.holterEventLog = window.holterEventLog || [];
       if (countEl) countEl.textContent = modelDecisions;
       flashConfirm(decision.replace(/_/g, ' '));
       console.log('[holter-event]', window.holterEventLog[window.holterEventLog.length - 1]);
+    }});
+  }});
+}})();
+
+// HOL-45 — pane-scoped severity filter + sortable SYNTHESIS columns.
+// Filter: pane-filter-btn click sets active filter for that scope; hides
+//   .pane-filterable[data-filter-scope=X] rows whose data-severity doesn't
+//   pass the rule (ALL passes everything; ESCALATE passes ESCALATE+ACUTE).
+// Sort: click a th.sortable to toggle asc/desc on data-sort-(key) attrs.
+(function () {{
+  const severityRank = {{ NOMINAL: 0, WATCH: 1, ESCALATE: 2, ACUTE: 3, PENDING: 1 }};
+
+  function passesFilter(rowSev, filterVal) {{
+    if (filterVal === 'all') return true;
+    if (filterVal === 'PENDING') return rowSev === 'PENDING';
+    // For severity filters: row passes if its severity is >= filter level
+    const rs = severityRank[rowSev]; const fs = severityRank[filterVal];
+    if (rs === undefined || fs === undefined) return rowSev === filterVal;
+    return rs >= fs;
+  }}
+
+  function applyFilter(scope, filterVal) {{
+    document.querySelectorAll(
+      '.pane-filterable[data-filter-scope="' + scope + '"]'
+    ).forEach(row => {{
+      const rowSev = row.getAttribute('data-severity') || 'NOMINAL';
+      row.classList.toggle('pane-row-hidden', !passesFilter(rowSev, filterVal));
+    }});
+  }}
+
+  document.querySelectorAll('.pane-filter-btn').forEach(btn => {{
+    btn.addEventListener('click', function (ev) {{
+      ev.preventDefault();
+      const scope = this.getAttribute('data-filter-scope');
+      const val = this.getAttribute('data-filter-value');
+      // Toggle active state for the scope's button group
+      document.querySelectorAll(
+        '.pane-filter-btn[data-filter-scope="' + scope + '"]'
+      ).forEach(b => b.setAttribute(
+        'data-active', b === this ? 'true' : 'false'
+      ));
+      applyFilter(scope, val);
+    }});
+  }});
+
+  // Sort: synthesis table columns
+  document.querySelectorAll('th.sortable[data-sort-key]').forEach(th => {{
+    th.addEventListener('click', function (ev) {{
+      ev.preventDefault();
+      const table = this.closest('table');
+      const key = this.getAttribute('data-sort-key');
+      const current = this.getAttribute('data-sort');
+      const next = current === 'asc' ? 'desc' : 'asc';
+      // Reset other headers
+      table.querySelectorAll('th.sortable').forEach(t =>
+        t.removeAttribute('data-sort')
+      );
+      this.setAttribute('data-sort', next);
+      // Reorder tbody
+      const tbody = table.querySelector('tbody');
+      const rows = Array.from(tbody.querySelectorAll('tr'));
+      rows.sort((a, b) => {{
+        const va = a.getAttribute('data-sort-' + key) || '';
+        const vb = b.getAttribute('data-sort-' + key) || '';
+        // Numeric if both parse as numbers
+        const na = parseFloat(va); const nb = parseFloat(vb);
+        const numeric = !isNaN(na) && !isNaN(nb);
+        const cmp = numeric ? (na - nb) : va.localeCompare(vb);
+        return next === 'asc' ? cmp : -cmp;
+      }});
+      rows.forEach(r => tbody.appendChild(r));
     }});
   }});
 }})();
