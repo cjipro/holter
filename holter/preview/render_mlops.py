@@ -510,11 +510,12 @@ CSS_EXTRA = (Path(__file__).parent / "mlops.css").read_text(encoding="utf-8")
 # Pane renderers — each pane is one box obeying the 4-layer discipline
 # ─────────────────────────────────────────────────────────────────────────────
 
-def render_drift_pane(packs: list[dict]) -> str:
-    """Pane 1 — DRIFT MONITORS. Per-cell COHORT-DISAGGREGATED sparklines
-    (HOL-41) — multiple lines per row showing each age-band's trend so
-    O'Neil's single-subgroup-bleeding case is visible at a glance."""
-    # HOL-41 cohort legend (top of body) + HOL-43 cohort-solo data-cohort attr
+# HOL-50 (Metz PR-panel): helper functions extracted from the pane renderers
+# so each pane is orchestration-only. Pure refactor; byte-stable output.
+
+def _render_drift_legend_strip() -> str:
+    """Top-of-DRIFT-pane strip: cohort legend swatches + 30d baseline indicator
+    + HOL-43 window scrubber [7d][14d][30d]. Constant across all renders."""
     legend_swatches = "".join(
         f'<span class="drift-legend-swatch" data-cohort="{_e(label)}">'
         f'<span class="drift-legend-dot" style="background:{c};"></span>'
@@ -522,7 +523,6 @@ def render_drift_pane(packs: list[dict]) -> str:
         f'</span>'
         for label, c in zip(_COHORT_LABELS, _COHORT_COLORS)
     )
-    # HOL-43 — window scrubber + cohort legend share the top strip
     scrubber_html = (
         f'<div class="window-scrubber">'
         f'<span class="window-scrubber-label">window</span>'
@@ -532,7 +532,7 @@ def render_drift_pane(packs: list[dict]) -> str:
         f'<button class="window-scrubber-btn" data-window="30d" type="button">30d</button>'
         f'</div>'
     )
-    legend_html = (
+    return (
         f'<div class="drift-legend">'
         f'<span class="drift-legend-label">age_band</span>'
         f'{legend_swatches}'
@@ -544,64 +544,76 @@ def render_drift_pane(packs: list[dict]) -> str:
         f'</div>'
     )
 
-    drift_rows = []
+
+def _build_drift_row(p: dict) -> tuple[str, int]:
+    """Render one DRIFT row's HTML + return the row's 7-day delta so the
+    pane orchestrator can find the worst-cell pack for the headline KPI
+    + narrative. Includes the 3 pre-rendered sparkline windows (HOL-43)."""
+    cell_series = drift_series(p["meta"]["pack_name"])
+    today, week_ago = cell_series[-1], cell_series[-8]
+    delta = today - week_ago
+    color = "var(--red)" if abs(delta) > 5 else (
+             "var(--amber)" if abs(delta) > 2 else "var(--green)")
+    h = p["hypothesis"] or {}
+    cell = _e(str(h.get("cell_id", "?")))
+    sig = _e(h.get("signature_id", "—").replace("_", " "))
+
+    # HOL-41 + HOL-43: render 3 sparkline windows; CSS toggles which is visible
+    baseline_30d = sum(cell_series) / len(cell_series)
+    spark_parts = []
+    for win_n, win_label in [(7, "7d"), (14, "14d"), (30, "30d")]:
+        cohorts = [
+            CohortSeries(
+                label=cohort,
+                color=cohort_color,
+                values=cohort_drift_series_n(p["meta"]["pack_name"], cohort, win_n),
+            )
+            for cohort, cohort_color in zip(_COHORT_LABELS, _COHORT_COLORS)
+        ]
+        svg = multi_sparkline_svg(
+            cohorts, width=240, height=28, baseline=baseline_30d,
+        )
+        svg_tagged = svg.replace(
+            '<svg class="body-sparkline"',
+            f'<svg class="body-sparkline" data-window="{win_label}"',
+            1,
+        )
+        spark_parts.append(svg_tagged)
+    spark = "".join(spark_parts)
+
+    # HOL-39 + HOL-45: cell-id link, per-row severity, threshold tooltip
+    row_sev = classify_drift_severity(delta)
+    delta_tooltip = DRIFT_RULES.get(f"DRIFT_{row_sev}", "")
+    row_html = (
+        f'<div class="drift-cell cell-row pane-filterable" '
+        f'data-cell-id="{cell}" data-severity="{row_sev}" '
+        f'data-filter-scope="drift">'
+        f'<span class="drift-cell-label">'
+        f'<a class="cell-link" href="#cell-{cell}" data-cell-id="{cell}">cell {cell}</a>'
+        f' · {sig}</span>'
+        f'<span class="drift-cell-spark">{spark}</span>'
+        f'<span class="drift-cell-val threshold-token" '
+        f'style="color:{color};" title="{_e(delta_tooltip)}">'
+        f'{delta:+d}pp</span>'
+        f'</div>'
+    )
+    return row_html, delta
+
+
+def render_drift_pane(packs: list[dict]) -> str:
+    """Pane 1 — DRIFT MONITORS. Per-cell COHORT-DISAGGREGATED sparklines
+    (HOL-41) — multiple lines per row showing each age-band's trend so
+    O'Neil's single-subgroup-bleeding case is visible at a glance.
+    HOL-50: extracted row builder + legend strip into helpers."""
+    drift_rows: list[str] = []
     worst_delta = 0
-    worst_pack = None
+    worst_pack: dict | None = None
     for p in packs[:5]:  # 5 rows fit cleanly with the bigger sparkline
-        cell_series = drift_series(p["meta"]["pack_name"])
-        today, week_ago = cell_series[-1], cell_series[-8]
-        delta = today - week_ago
-        color = "var(--red)" if abs(delta) > 5 else (
-                 "var(--amber)" if abs(delta) > 2 else "var(--green)")
+        row_html, delta = _build_drift_row(p)
+        drift_rows.append(row_html)
         if abs(delta) > abs(worst_delta):
             worst_delta = delta
             worst_pack = p
-        h = p["hypothesis"] or {}
-        cell = _e(str(h.get("cell_id", "?")))
-        sig = _e(h.get("signature_id", "—").replace("_", " "))
-        # HOL-41: per-cohort series + cell-aggregated baseline
-        # HOL-43: render 3 windows ([7d][14d][30d]); CSS toggles which
-        # is visible based on body[data-window]. Default 14d.
-        baseline_30d = sum(cell_series) / len(cell_series)
-        spark_parts = []
-        for win_n, win_label in [(7, "7d"), (14, "14d"), (30, "30d")]:
-            # HOL-54: bundle label/color/values per cohort into CohortSeries.
-            cohorts = [
-                CohortSeries(
-                    label=cohort,
-                    color=color,
-                    values=cohort_drift_series_n(p["meta"]["pack_name"], cohort, win_n),
-                )
-                for cohort, color in zip(_COHORT_LABELS, _COHORT_COLORS)
-            ]
-            svg = multi_sparkline_svg(
-                cohorts, width=240, height=28, baseline=baseline_30d,
-            )
-            # Inject the data-window attribute into the SVG root tag
-            svg_tagged = svg.replace(
-                '<svg class="body-sparkline"',
-                f'<svg class="body-sparkline" data-window="{win_label}"',
-                1,
-            )
-            spark_parts.append(svg_tagged)
-        spark = "".join(spark_parts)
-        # HOL-39: cell-id is now a click-target; row carries data-cell-id
-        # HOL-45: per-row severity for filter + delta value carries threshold tooltip
-        row_sev = classify_drift_severity(delta)
-        delta_tooltip = DRIFT_RULES.get(f"DRIFT_{row_sev}", "")
-        drift_rows.append(
-            f'<div class="drift-cell cell-row pane-filterable" '
-            f'data-cell-id="{cell}" data-severity="{row_sev}" '
-            f'data-filter-scope="drift">'
-            f'<span class="drift-cell-label">'
-            f'<a class="cell-link" href="#cell-{cell}" data-cell-id="{cell}">cell {cell}</a>'
-            f' · {sig}</span>'
-            f'<span class="drift-cell-spark">{spark}</span>'
-            f'<span class="drift-cell-val threshold-token" '
-            f'style="color:{color};" title="{_e(delta_tooltip)}">'
-            f'{delta:+d}pp</span>'
-            f'</div>'
-        )
 
     # HOL-40 — narrative severity gradient driven by worst-cell delta
     drift_sev = classify_drift_severity(worst_delta)
@@ -634,7 +646,7 @@ def render_drift_pane(packs: list[dict]) -> str:
             meta_right=NOW,
             progress_pct=min(100, abs(worst_delta) * 10),
         ),
-        body=drift_filter + legend_html + "".join(drift_rows) + narrative,
+        body=drift_filter + _render_drift_legend_strip() + "".join(drift_rows) + narrative,
         footer=box_footer(
             "frictionbench v0.1", NOW, live=True,
             note="Drift baselines from pulse.frictionbench.scoring",
@@ -723,62 +735,66 @@ def render_fairness_pane(packs: list[dict]) -> str:
     )
 
 
+def _build_lineage_row(p: dict, ls: dict) -> str:
+    """HOL-50: extracted from render_lineage_pane. One LINEAGE row (drift-cell
+    layout) + the collapsible .hash-chain block underneath. Row carries
+    data-cell-id for HOL-39 drill-through and data-severity for HOL-45 filter."""
+    h = p["hypothesis"] or {}
+    cell = _e(str(h.get("cell_id", "?")))
+    sha_short = _e(short_hash(p["sha256"]))
+    # HOL-43: hash is a click-target; expands chain ancestry inline
+    ancestry = lineage_chain_ancestry(p["meta"]["pack_name"], p["sha256"])
+    chain_rows = []
+    for i, anc in enumerate(ancestry):
+        arrow = ('<span class="hash-chain-arrow">↑ parent</span>'
+                 if i < len(ancestry) - 1 else
+                 '<span class="hash-chain-arrow">root</span>')
+        chain_rows.append(
+            f'<div class="hash-chain-row">'
+            f'<span class="hash-chain-sha">{_e(anc.sha)}</span>'
+            f'<span class="hash-chain-pipeline">{_e(anc.pipeline)}</span>'
+            f'<span class="hash-chain-dataset">{_e(anc.dataset)}</span>'
+            f'<span class="hash-chain-date">{_e(anc.sealed_at)}</span>'
+            f'</div>'
+            f'<div class="hash-chain-row">{arrow}</div>'
+        )
+    chain_html = (
+        f'<div class="hash-chain" data-chain-for="{cell}">'
+        f'{"".join(chain_rows)}'
+        f'</div>'
+    )
+    # HOL-45: per-row severity (BROKEN→ACUTE, VERIFIED→NOMINAL) +
+    # threshold tooltip on the chain_status badge
+    row_sev = "ACUTE" if ls["chain_status"] == "BROKEN" else "NOMINAL"
+    status_tip = STATUS_RULES.get(ls["chain_status"], "")
+    return (
+        f'<div class="drift-cell cell-row pane-filterable" '
+        f'data-cell-id="{cell}" data-severity="{row_sev}" '
+        f'data-filter-scope="lineage">'
+        f'<span class="drift-cell-label">'
+        f'<a class="cell-link" href="#cell-{cell}" data-cell-id="{cell}">cell {cell}</a>'
+        f' · <a class="hash-link" href="#" data-chain-toggle="{cell}" '
+        f'title="Expand upstream chain">sha:{sha_short}</a></span>'
+        f'<span class="govern-badge threshold-token" '
+        f'style="color:{ls["color"]};" title="{_e(status_tip)}">'
+        f'{ls["chain_status"]}</span>'
+        f'<span class="drift-cell-val" style="color:var(--text-3); width:auto; '
+        f'text-align:right; font-size:9px;">depth {ls["chain_depth"]}</span>'
+        f'</div>'
+        f'{chain_html}'
+    )
+
+
 def render_lineage_pane(packs: list[dict]) -> str:
-    """Pane 3 — LINEAGE VERIFIER. Hash-chain health + broken alerts."""
+    """Pane 3 — LINEAGE VERIFIER. Hash-chain health + broken alerts.
+    HOL-50: row construction extracted to _build_lineage_row()."""
     rows = [(p, lineage_status(p["meta"]["pack_name"], p["sha256"])) for p in packs]
     broken = [(p, ls) for p, ls in rows if ls["chain_status"] == "BROKEN"]
     n_broken = len(broken)
     n_verified = len(packs) - n_broken
     chain_health_pct = int(100 * n_verified / max(len(packs), 1))
 
-    # Worst pack (first broken, or just first if none broken)
-    detail_rows = []
-    for p, ls in rows[:5]:
-        h = p["hypothesis"] or {}
-        cell = _e(str(h.get("cell_id", "?")))
-        sha_short = _e(short_hash(p["sha256"]))
-        # HOL-39: cell-id is a click-target; row carries data-cell-id
-        # HOL-43: hash is a click-target; expands chain ancestry inline
-        ancestry = lineage_chain_ancestry(p["meta"]["pack_name"], p["sha256"])
-        chain_rows = []
-        for i, anc in enumerate(ancestry):
-            arrow = ('<span class="hash-chain-arrow">↑ parent</span>'
-                     if i < len(ancestry) - 1 else
-                     '<span class="hash-chain-arrow">root</span>')
-            chain_rows.append(
-                f'<div class="hash-chain-row">'
-                f'<span class="hash-chain-sha">{_e(anc.sha)}</span>'
-                f'<span class="hash-chain-pipeline">{_e(anc.pipeline)}</span>'
-                f'<span class="hash-chain-dataset">{_e(anc.dataset)}</span>'
-                f'<span class="hash-chain-date">{_e(anc.sealed_at)}</span>'
-                f'</div>'
-                f'<div class="hash-chain-row">{arrow}</div>'
-            )
-        chain_html = (
-            f'<div class="hash-chain" data-chain-for="{cell}">'
-            f'{"".join(chain_rows)}'
-            f'</div>'
-        )
-        # HOL-45: per-row severity (BROKEN→ACUTE, VERIFIED→NOMINAL) +
-        # threshold tooltip on the chain_status badge
-        row_sev = "ACUTE" if ls["chain_status"] == "BROKEN" else "NOMINAL"
-        status_tip = STATUS_RULES.get(ls["chain_status"], "")
-        detail_rows.append(
-            f'<div class="drift-cell cell-row pane-filterable" '
-            f'data-cell-id="{cell}" data-severity="{row_sev}" '
-            f'data-filter-scope="lineage">'
-            f'<span class="drift-cell-label">'
-            f'<a class="cell-link" href="#cell-{cell}" data-cell-id="{cell}">cell {cell}</a>'
-            f' · <a class="hash-link" href="#" data-chain-toggle="{cell}" '
-            f'title="Expand upstream chain">sha:{sha_short}</a></span>'
-            f'<span class="govern-badge threshold-token" '
-            f'style="color:{ls["color"]};" title="{_e(status_tip)}">'
-            f'{ls["chain_status"]}</span>'
-            f'<span class="drift-cell-val" style="color:var(--text-3); width:auto; '
-            f'text-align:right; font-size:9px;">depth {ls["chain_depth"]}</span>'
-            f'</div>'
-            f'{chain_html}'
-        )
+    detail_rows = [_build_lineage_row(p, ls) for p, ls in rows[:5]]
 
     # HOL-45 — pane filter strip
     lineage_filter = render_filter_strip(
@@ -816,60 +832,70 @@ def render_lineage_pane(packs: list[dict]) -> str:
     )
 
 
+def _render_synthesis_action_cluster(cell: str) -> str:
+    """HOL-50: extracted from render_synthesis_pane. PENDING-row 3-button
+    cluster [Attest][Challenge][Defer]. HOL-42 governance affordance."""
+    return (
+        f'<td><span class="govern-actions" data-cell-id="{cell}">'
+        f'<button class="govern-action-btn govern-action-btn--attest" '
+        f'data-action="attest" data-cell-id="{cell}" type="button">Attest</button>'
+        f'<button class="govern-action-btn govern-action-btn--challenge" '
+        f'data-action="challenge" data-cell-id="{cell}" type="button">Challenge</button>'
+        f'<button class="govern-action-btn govern-action-btn--defer" '
+        f'data-action="defer" data-cell-id="{cell}" type="button">Defer</button>'
+        f'</span></td>'
+    )
+
+
+def _build_synthesis_row(p: dict, g: dict) -> str:
+    """HOL-50: extracted from render_synthesis_pane. One SYNTHESIS table
+    <tr> with cell link, mode + attestation badges (threshold-tooltip'd),
+    reviewer + date columns, and the actionable PENDING action cluster
+    (or "—" placeholder for resolved rows)."""
+    h = p["hypothesis"] or {}
+    cell = _e(str(h.get("cell_id", "?")))
+    # HOL-42: PENDING rows get inline action cluster; resolved rows show "—"
+    if g["is_actionable"]:
+        actions_cell = _render_synthesis_action_cluster(cell)
+    else:
+        actions_cell = '<td><span class="govern-actions-none">—</span></td>'
+    # HOL-39 + HOL-45 row attrs: drill-through + filter + sort + tooltips
+    row_sev = attestation_severity(g["attestation"])
+    att_tip = ATTESTATION_RULES.get(g["attestation"], "")
+    mode_tip = SYNTHESIS_RULES.get(g["synthesis_mode"], "")  # may be empty
+    return (
+        f'<tr class="cell-row pane-filterable" data-cell-id="{cell}" '
+        f'data-row-state="pending" data-severity="{row_sev}" '
+        f'data-filter-scope="synthesis" '
+        f'data-sort-cell="{cell}" '
+        f'data-sort-mode="{_e(g["synthesis_mode"])}" '
+        f'data-sort-attestation="{_e(g["attestation"])}" '
+        f'data-sort-reviewed="{_e(g["reviewed_date"])}">'
+        f'<td><a class="cell-link" href="#cell-{cell}" data-cell-id="{cell}">cell {cell}</a></td>'
+        f'<td><span class="govern-badge threshold-token" '
+        f'style="color:{g["mode_color"]};" title="{_e(mode_tip)}">'
+        f'{g["synthesis_mode"]}</span></td>'
+        f'<td><span class="govern-badge threshold-token" '
+        f'style="color:{g["att_color"]};" title="{_e(att_tip)}">'
+        f'{g["attestation"]}</span></td>'
+        f'<td>{_e(g["reviewer"])}</td>'
+        f'<td>{_e(g["reviewed_date"])}</td>'
+        f'{actions_cell}'
+        f'</tr>'
+    )
+
+
 def render_synthesis_pane(packs: list[dict]) -> str:
     """Pane 4 — SYNTHESIS-MODE GOVERNANCE. Per-pack table of synthesis-mode +
-    attestation status. Critical before any LLM_AUGMENTED prod enable."""
+    attestation status. Critical before any LLM_AUGMENTED prod enable.
+    HOL-50: row + action-cluster construction extracted to helpers."""
     rows = [(p, synthesis_governance(p["meta"]["pack_name"])) for p in packs]
     n_llm = sum(1 for _, g in rows if g["synthesis_mode"] == "LLM_AUGMENTED")
     n_det = len(packs) - n_llm
     n_certified = sum(1 for _, g in rows if g["attestation"] == "certified")
 
-    table_rows = []
-    n_actionable = 0
-    for p, g in rows[:6]:
-        h = p["hypothesis"] or {}
-        cell = _e(str(h.get("cell_id", "?")))
-        # HOL-42: PENDING rows get inline action cluster; resolved rows
-        # show "—". JS swaps the row state in-session when buttons are clicked.
-        if g["is_actionable"]:
-            n_actionable += 1
-            actions_cell = (
-                f'<td><span class="govern-actions" data-cell-id="{cell}">'
-                f'<button class="govern-action-btn govern-action-btn--attest" '
-                f'data-action="attest" data-cell-id="{cell}" type="button">Attest</button>'
-                f'<button class="govern-action-btn govern-action-btn--challenge" '
-                f'data-action="challenge" data-cell-id="{cell}" type="button">Challenge</button>'
-                f'<button class="govern-action-btn govern-action-btn--defer" '
-                f'data-action="defer" data-cell-id="{cell}" type="button">Defer</button>'
-                f'</span></td>'
-            )
-        else:
-            actions_cell = '<td><span class="govern-actions-none">—</span></td>'
-        # HOL-39: row carries data-cell-id; cell column is the click-target
-        # HOL-45: per-row severity for filter + threshold tooltip on attestation
-        row_sev = attestation_severity(g["attestation"])
-        att_tip = ATTESTATION_RULES.get(g["attestation"], "")
-        mode_tip = SYNTHESIS_RULES.get(g["synthesis_mode"], "")  # may be empty
-        table_rows.append(
-            f'<tr class="cell-row pane-filterable" data-cell-id="{cell}" '
-            f'data-row-state="pending" data-severity="{row_sev}" '
-            f'data-filter-scope="synthesis" '
-            f'data-sort-cell="{cell}" '
-            f'data-sort-mode="{_e(g["synthesis_mode"])}" '
-            f'data-sort-attestation="{_e(g["attestation"])}" '
-            f'data-sort-reviewed="{_e(g["reviewed_date"])}">'
-            f'<td><a class="cell-link" href="#cell-{cell}" data-cell-id="{cell}">cell {cell}</a></td>'
-            f'<td><span class="govern-badge threshold-token" '
-            f'style="color:{g["mode_color"]};" title="{_e(mode_tip)}">'
-            f'{g["synthesis_mode"]}</span></td>'
-            f'<td><span class="govern-badge threshold-token" '
-            f'style="color:{g["att_color"]};" title="{_e(att_tip)}">'
-            f'{g["attestation"]}</span></td>'
-            f'<td>{_e(g["reviewer"])}</td>'
-            f'<td>{_e(g["reviewed_date"])}</td>'
-            f'{actions_cell}'
-            f'</tr>'
-        )
+    n_actionable = sum(1 for _, g in rows[:6] if g["is_actionable"])
+    table_rows = [_build_synthesis_row(p, g) for p, g in rows[:6]]
     # HOL-45 — sortable column headers; data-sort-key matches the
     # data-sort-* attrs on rows, JS handler reorders tbody children.
     table_html = (
