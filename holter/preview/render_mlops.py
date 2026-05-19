@@ -84,6 +84,77 @@ def drift_series(pack_name: str) -> list[int]:
     return [baseline + ((h + i * 3) % 17) - 8 for i in range(14)]
 
 
+# HOL-41 — cohort axes for disaggregated drift (O'Neil + Gigerenzer + Hubbard).
+# Engine returns per-cohort series via pulse.frictionbench.scoring.cohort_breakdown
+# once the contract is wired; stubbed deterministically per (pack, cohort).
+_COHORT_LABELS = ["18-24", "25-54", "55+"]
+_COHORT_COLORS = ["var(--red)", "var(--blue)", "var(--green)"]
+
+
+def cohort_drift_series(pack_name: str, cohort: str) -> list[int]:
+    """Stub 14-day detection-rate series per cohort. Different cohorts drift
+    independently — important because cell-aggregated drift can hide a single
+    subgroup bleeding (O'Neil's R1 critique)."""
+    h = sum(ord(c) for c in pack_name) + sum(ord(c) for c in cohort)
+    baseline = 40 + (h % 30)
+    # Each cohort gets its own drift signature
+    swing = (h % 12) - 6
+    return [baseline + ((h + i * (3 + cohort.count("-"))) % 19) - 9 + swing
+            for i in range(14)]
+
+
+def multi_sparkline_svg(series_list: list[list[float]], colors: list[str],
+                        width: int = 200, height: int = 36,
+                        baseline: float | None = None,
+                        baseline_color: str = "rgba(180,200,210,0.4)") -> str:
+    """Multi-series sparkline — N overlaid trend lines + optional baseline.
+
+    HOL-41: replaces the single-series sparkline_svg in DRIFT pane to surface
+    cohort-level drift. Each series gets its own color from `colors`. Baseline
+    renders as a dashed horizontal line (cell-aggregated 30-day mean) so the
+    reader has an anchor for "is this drifting away from baseline."
+    """
+    if not series_list or not series_list[0]:
+        return ""
+    # Y-axis range = union of all series + baseline
+    all_y: list[float] = []
+    for s in series_list:
+        all_y.extend(s)
+    if baseline is not None:
+        all_y.append(baseline)
+    vmin, vmax = min(all_y), max(all_y)
+    span = (vmax - vmin) or 1.0
+    n = len(series_list[0])
+    step = width / max(n - 1, 1)
+
+    polylines = []
+    for series, color in zip(series_list, colors):
+        pts = " ".join(
+            f"{i*step:.1f},{height - ((v - vmin) / span) * height:.1f}"
+            for i, v in enumerate(series)
+        )
+        polylines.append(
+            f'<polyline points="{pts}" fill="none" '
+            f'stroke="{color}" stroke-width="1.4" opacity="0.85"/>'
+        )
+
+    baseline_svg = ""
+    if baseline is not None:
+        by = height - ((baseline - vmin) / span) * height
+        baseline_svg = (
+            f'<line x1="0" y1="{by:.1f}" x2="{width}" y2="{by:.1f}" '
+            f'stroke="{baseline_color}" stroke-width="1" stroke-dasharray="2,3"/>'
+        )
+
+    return (
+        f'<svg class="body-sparkline" viewBox="0 0 {width} {height}" '
+        f'width="100%" height="{height}" preserveAspectRatio="none">'
+        f'{baseline_svg}'
+        f'{"".join(polylines)}'
+        f'</svg>'
+    )
+
+
 def fairness_record(pack_name: str) -> dict:
     """Stub fairness metrics — engine returns via pulse.convergence."""
     h = sum(ord(c) for c in pack_name)
@@ -225,9 +296,24 @@ CSS_EXTRA = """
 /* Drift sparkline cell — used in the per-cell mini-grid */
 .drift-cell { display: flex; align-items: center; gap: 8px;
               padding: 4px 0; font-family: var(--mono); font-size: 10px; }
-.drift-cell-label { color: var(--text-2); flex: 1; }
-.drift-cell-spark { flex: 0 0 90px; }
-.drift-cell-val { color: var(--text); font-weight: 700; width: 30px; text-align: right; }
+.drift-cell-label { color: var(--text-2); flex: 0 0 165px; white-space: nowrap;
+                    overflow: hidden; text-overflow: ellipsis; }
+/* HOL-41: bigger sparkline so 14 days are readable (was 90px → now 200px) */
+.drift-cell-spark { flex: 1 1 200px; min-width: 200px; }
+.drift-cell-val { color: var(--text); font-weight: 700; width: 50px;
+                  text-align: right; flex: 0 0 50px; }
+/* HOL-41: cohort legend at top of DRIFT pane */
+.drift-legend { display: flex; align-items: center; gap: 12px;
+                font-family: var(--mono); font-size: 9px;
+                letter-spacing: 1.2px; text-transform: uppercase;
+                color: var(--text-3); padding: 2px 0 6px;
+                border-bottom: 1px dashed var(--border); margin-bottom: 6px; }
+.drift-legend-label { color: var(--text-3); }
+.drift-legend-swatch { display: inline-flex; align-items: center; gap: 4px; }
+.drift-legend-dot { width: 10px; height: 2px; display: inline-block; }
+.drift-legend-baseline { display: inline-flex; align-items: center; gap: 4px;
+                         margin-left: auto; }
+.drift-legend-baseline-line { width: 14px; height: 1px; border-top: 1px dashed var(--text-3); }
 
 /* Narrative block — distinct from regular body lines */
 .mlops-narrative {
@@ -246,13 +332,34 @@ CSS_EXTRA = """
 # ─────────────────────────────────────────────────────────────────────────────
 
 def render_drift_pane(packs: list[dict]) -> str:
-    """Pane 1 — DRIFT MONITORS. Per-cell sparklines + worst-cell narrative."""
+    """Pane 1 — DRIFT MONITORS. Per-cell COHORT-DISAGGREGATED sparklines
+    (HOL-41) — multiple lines per row showing each age-band's trend so
+    O'Neil's single-subgroup-bleeding case is visible at a glance."""
+    # HOL-41 cohort legend (top of body)
+    legend_swatches = "".join(
+        f'<span class="drift-legend-swatch">'
+        f'<span class="drift-legend-dot" style="background:{c};"></span>'
+        f'<span>{_e(label)}</span>'
+        f'</span>'
+        for label, c in zip(_COHORT_LABELS, _COHORT_COLORS)
+    )
+    legend_html = (
+        f'<div class="drift-legend">'
+        f'<span class="drift-legend-label">age_band</span>'
+        f'{legend_swatches}'
+        f'<span class="drift-legend-baseline">'
+        f'<span class="drift-legend-baseline-line"></span>'
+        f'<span>30-day baseline</span>'
+        f'</span>'
+        f'</div>'
+    )
+
     drift_rows = []
     worst_delta = 0
     worst_pack = None
-    for p in packs[:6]:  # top 6 for grid
-        series = drift_series(p["meta"]["pack_name"])
-        today, week_ago = series[-1], series[-8]
+    for p in packs[:5]:  # 5 rows fit cleanly with the bigger sparkline
+        cell_series = drift_series(p["meta"]["pack_name"])
+        today, week_ago = cell_series[-1], cell_series[-8]
         delta = today - week_ago
         color = "var(--red)" if abs(delta) > 5 else (
                  "var(--amber)" if abs(delta) > 2 else "var(--green)")
@@ -262,7 +369,16 @@ def render_drift_pane(packs: list[dict]) -> str:
         h = p["hypothesis"] or {}
         cell = _e(str(h.get("cell_id", "?")))
         sig = _e(h.get("signature_id", "—").replace("_", " "))
-        spark = sparkline_svg(series, color, width=90, height=20)
+        # HOL-41: per-cohort 14-day series + cell-aggregated baseline
+        cohort_series_list = [
+            cohort_drift_series(p["meta"]["pack_name"], cohort)
+            for cohort in _COHORT_LABELS
+        ]
+        baseline_30d = sum(cell_series) / len(cell_series)
+        spark = multi_sparkline_svg(
+            cohort_series_list, _COHORT_COLORS,
+            width=240, height=28, baseline=baseline_30d,
+        )
         drift_rows.append(
             f'<div class="drift-cell">'
             f'<span class="drift-cell-label">cell {cell} · {sig}</span>'
@@ -293,7 +409,7 @@ def render_drift_pane(packs: list[dict]) -> str:
             meta_right=NOW,
             progress_pct=min(100, abs(worst_delta) * 10),
         ),
-        body="".join(drift_rows) + narrative,
+        body=legend_html + "".join(drift_rows) + narrative,
         footer=box_footer(
             "frictionbench v0.1", NOW, live=True,
             note="Drift baselines from pulse.frictionbench.scoring",
