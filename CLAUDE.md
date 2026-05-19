@@ -18,13 +18,33 @@ This file provides guidance to Claude Code when working in this repository.
 
 A surface that does not prominently surface `COMMERCIAL-OPPORTUNITY` is failing the framing.
 
-## 🎯 Next session entry point (set 2026-05-19 EOD)
+## 🎯 Commercial-value audit (RUN 2026-05-19, verdict + remediation arc filed)
 
-**Starting question:** *"If Holter interface answers the commercial value question."*
+**Audit verdict (against the "does the interface answer the commercial value question" lens):**
 
-Audit HOL-3 Workspace · HOL-4 Pulse Home · HOL-6 MLOps Console against the commercial-value lens before any new build work. The 3 surfaces were designed with panels weighted toward decision-intelligence / governance / dashboard design — none of which would have flagged "Value tier is buried" as a critique. Likely findings + audit-question framework in memory: [[next-session-commercial-audit]].
+| Surface | Verdict | Root cause |
+|---|---|---|
+| HOL-4 Home | **STRUCTURAL FAIL** | `_TIER_RANK` (render_home.py:72-79) puts `COMMERCIAL-OPPORTUNITY` at rank 2 behind `ACUTE`=0 and `REGULATORY-FLAG`=1. Hero is explicitly "highest-severity flagged signal" (line 533/761). All cards visible to CCO are ACUTE; no £ sizing, no affected-population, no Commercial-Opportunity queue. |
+| HOL-3 Workspace | **PARTIAL FAIL** | Box 1 demotes Value tier to footer chip strip; ACTION line is governance-procedural. Box 2 tests detection, not commercial lift. Box 3 KPIs are operational (detected sessions, affected count) not commercial (£/conversion). |
+| HOL-6 MLOps | **MINOR FAIL (half-finished bridge)** | Correctly framed as the gate, but the decision frame's 3-button cluster carries zero commercial signal-back — MRM reviewer can't see what business is held/unblocked by their decision. |
+| Engine | **SHARED ROOT CAUSE** | `ValueScore` (pulse/value/score.py:33-50) returns categorical tier badge only — no £/month lift, no conversion delta, no CI. UI can't render sized commercial signal because engine doesn't surface it. |
 
-Don't skip the re-read. Don't repeat governance-led framing in any user-facing communication during the audit.
+**Remediation arc filed 2026-05-19 (4 tickets, see [[next-session-commercial-audit]] for audit detail):**
+
+| Ticket | Project | Scope | Blocked-by |
+|---|---|---|---|
+| [HOL-55](https://cjipro.atlassian.net/browse/HOL-55) | HOL | Home dual-queue feed (Compliance + Commercial Opportunities) + commercial sizing strip on cards | PULSE-107 (partial — UI can ship without sizing) |
+| [HOL-56](https://cjipro.atlassian.net/browse/HOL-56) | HOL | Workspace Box 1 promote Value to headline + Box 3 swap to commercial KPI + commercial verb on ACTION | PULSE-107 (partial — verb + headline can ship without sizing) |
+| [HOL-57](https://cjipro.atlassian.net/browse/HOL-57) | HOL | MLOps Unblocks: affordance + commercial sign-off acknowledgement on APPROVE FOR PROD 14D | PULSE-107 |
+| [PULSE-107](https://cjipro.atlassian.net/browse/PULSE-107) | PULSE | Extend ValueScore with `estimated_monthly_lift_gbp` + `conversion_rate_delta` + bootstrap CI + ARPU/journey block in `bank_policy.yaml` | — (engine work, no blocker) |
+
+Audit screenshots: `dist/audit/hol4-home-*.png`, `dist/audit/hol3-workspace-*.png`, `dist/audit/hol6-mlops-*.png`.
+
+## 🎯 Next session entry point (set 2026-05-19 post-audit)
+
+**Build order (dependency-readiness, no phases):** **PULSE-107 first** (engine sized lift — unblocks all 3 HOL tickets) → then **HOL-57** (smallest UI scope, smallest blast radius — proves the bridge before the bigger Home/Workspace surgery) → then **HOL-55** + **HOL-56** in either order (independent of each other once engine ships).
+
+Don't skip the re-read of [[commercial-value-first]] + [[dont-lead-with-governance]] before starting any of the above. Don't repeat governance-led framing in any user-facing communication. **Defer:** HOL-49..54 (existing residual backlog), HOL-7 (still gated on registry ≥40 packs), HOL-47/48 (engine-blocked separately). Any panel re-scoring of HOL-3/4/6 is premature until the remediation arc lands.
 
 ## Project Identity
 
@@ -127,8 +147,11 @@ work-tracking level, not the codebase level.
   PULSE-91 migration), and the v2 spine shipped 2026-05-18
   (PULSE-99..106: Risk methodology, Chronicle, Value methodology, bank_policy
   contract, hypothesis validator, 12-pack backfill, Diagnosis methodology,
-  Agentic AI placement worked example). **PULSE-107 = next engine ticket.**
-- **HOL-1..48** (current high water as of 2026-05-19 end-of-day). Recent activity:
+  Agentic AI placement worked example); PULSE-107 filed 2026-05-19 post-audit
+  (extend ValueScore with `estimated_monthly_lift_gbp` + bootstrap CI +
+  `arpu_per_journey` block in `bank_policy.yaml` — blocks HOL-55/56/57).
+  **PULSE-108 = next engine ticket.**
+- **HOL-1..57** (current high water as of 2026-05-19 post-audit). Recent activity:
   HOL-12..17 shipped (HOL-3 Workspace design-panel arc, design-locked
   2026-05-19); HOL-18..23 filed as Workspace residual backlog; HOL-4,
   HOL-24..30 shipped (HOL-4 Pulse Home design-panel arc, design-locked
@@ -138,7 +161,12 @@ work-tracking level, not the codebase level.
   shipped (HOL-6 MLOps Console R1→R2→R3 panel arc, lock-eligible at
   composite 7.61 with 5 LOCK / 4 one-more across 9 voices); HOL-47..48
   filed as R3 residual backlog (durable challenge artifact · bootstrap CI
-  on headline stats). **HOL-49 = next UI/build ticket.**
+  on headline stats); HOL-49..54 PR-panel "file-it" batch all SHIPPED
+  same-day (Beck tests · Metz pane-renderer extraction · Hickey eventLog
+  schema + body-scope · van Rossum CSS extract · Hettinger type discipline);
+  HOL-55..57 filed as commercial-value-audit remediation arc (Home dual-queue
+  · Workspace headline Value · MLOps Unblocks affordance — all blocked by
+  PULSE-107). **HOL-58 = next UI/build ticket.**
 
 ## Locked decisions
 
