@@ -683,12 +683,14 @@ CSS_EXTRA = """
   color: var(--blue); border-color: var(--blue);
 }
 
-/* SVG window switching: show one, hide the other two */
+/* SVG window switching: show one, hide the other two.
+   HOL-52 (Hickey) — scope to .mlops-page not body, so co-mounted
+   surfaces don't clobber each other's window state. */
 .drift-cell-spark svg[data-window] { display: none; }
-body:not([data-window]) .drift-cell-spark svg[data-window="14d"],
-body[data-window="7d"]  .drift-cell-spark svg[data-window="7d"],
-body[data-window="14d"] .drift-cell-spark svg[data-window="14d"],
-body[data-window="30d"] .drift-cell-spark svg[data-window="30d"] {
+.mlops-page:not([data-window]) .drift-cell-spark svg[data-window="14d"],
+.mlops-page[data-window="7d"]  .drift-cell-spark svg[data-window="7d"],
+.mlops-page[data-window="14d"] .drift-cell-spark svg[data-window="14d"],
+.mlops-page[data-window="30d"] .drift-cell-spark svg[data-window="30d"] {
   display: block;
 }
 
@@ -1415,7 +1417,7 @@ def render_page() -> str:
 </head>
 <body>
 {render_topnav()}
-<main class="mlops-page">
+<main class="mlops-page" data-window="14d">
 {render_decision_frame(packs)}
 <div class="mlops-grid">{panes}</div>
 </main>
@@ -1531,14 +1533,17 @@ window.holterEventLog = window.holterEventLog || [];
 // HOL-43 — Window scrubber [7d][14d][30d] + lineage hash click-to-expand
 // chain ancestry. Three affordances, one gesture (reach into the data).
 (function () {{
-  // (b) Window scrubber: sets body[data-window]; CSS hides/shows the
-  // matching sparkline SVG variant. Default 14d.
-  document.body.setAttribute('data-window', '14d');
+  // (b) Window scrubber: sets .mlops-page[data-window]; CSS hides/shows
+  // the matching sparkline SVG variant. Default 14d (server-rendered
+  // as an attribute on the <main> tag — JS no longer initialises).
+  // HOL-52 (Hickey) — scoped to .mlops-page not document.body so a
+  // co-mounted surface doesn't inherit our window state.
+  const mlopsPage = document.querySelector('.mlops-page');
   document.querySelectorAll('.window-scrubber-btn').forEach(btn => {{
     btn.addEventListener('click', function (ev) {{
       ev.preventDefault();
       const win = this.getAttribute('data-window');
-      document.body.setAttribute('data-window', win);
+      if (mlopsPage) mlopsPage.setAttribute('data-window', win);
       document.querySelectorAll('.window-scrubber-btn').forEach(b =>
         b.setAttribute('data-active', b === this ? 'true' : 'false')
       );
