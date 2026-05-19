@@ -416,3 +416,113 @@
   cursor: help;
   border-bottom: 1px dotted var(--text-3);
 }
+
+/* ──────────────────────────────────────────────────────────────────────
+   HOL-57 — Commercial signal-back on the decision frame
+   ────────────────────────────────────────────────────────────────────── */
+
+/* Unblocks strip — sits under the trigger sentence, shows what packs
+   are gated by this workflow + total £/month at stake. */
+.mlops-unblocks-strip {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 10px 14px;
+  margin: 8px 0 14px;
+  background: rgba(0, 183, 245, 0.04);
+  border-left: 2px solid var(--blue);
+  border-radius: 2px;
+  font-size: 11px;
+  flex-wrap: wrap;
+}
+.mlops-unblocks-strip--empty {
+  background: rgba(122, 122, 122, 0.05);
+  border-left-color: var(--text-3);
+}
+.mlops-unblocks-label {
+  color: var(--text-3);
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  padding-top: 2px;
+  white-space: nowrap;
+}
+.mlops-unblocks-context {
+  color: var(--text-2);
+  flex: 0 0 auto;
+  padding-top: 1px;
+}
+.mlops-unblocks-total {
+  color: var(--text);
+  font-weight: 600;
+}
+.mlops-unblocks-empty {
+  color: var(--text-3);
+  font-style: italic;
+}
+.mlops-unblocks-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  flex: 1 1 auto;
+}
+.mlops-unblocks-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 8px;
+  background: rgba(0, 0, 0, 0.18);
+  border-radius: 2px;
+  border: 1px solid var(--border);
+}
+.mlops-unblocks-tier {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+.mlops-unblocks-journey {
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+.mlops-unblocks-lift {
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.mlops-unblocks-pending {
+  color: var(--text-3);
+  font-style: italic;
+  font-weight: 400;
+}
+.mlops-unblocks-more {
+  color: var(--text-3);
+  font-style: italic;
+  align-self: center;
+}
+
+/* SYNTHESIS pane — Value tier + sized lift column. Adds a value-axis
+   prioritisation signal to the pending-attestation queue. */
+.govern-badge--value {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 700;
+  margin-right: 6px;
+}
+.govern-lift {
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  font-size: 10px;
+}
+.govern-lift-pending {
+  color: var(--text-3);
+  font-style: italic;
+}

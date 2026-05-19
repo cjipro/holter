@@ -66,6 +66,7 @@ from holter.preview._shared import (  # noqa: E402
     render_glossary_panel,
     _ACTION_COLORS,
     _RISK_COLORS,
+    _VALUE_COLORS,
 )
 
 NOW = _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -849,9 +850,11 @@ def _render_synthesis_action_cluster(cell: str) -> str:
 
 def _build_synthesis_row(p: dict, g: dict) -> str:
     """HOL-50: extracted from render_synthesis_pane. One SYNTHESIS table
-    <tr> with cell link, mode + attestation badges (threshold-tooltip'd),
-    reviewer + date columns, and the actionable PENDING action cluster
-    (or "—" placeholder for resolved rows)."""
+    <tr> with cell link, value tier + mode + attestation badges
+    (threshold-tooltip'd), reviewer + date columns, and the actionable
+    PENDING action cluster (or "—" placeholder for resolved rows).
+    HOL-57: Value tier column added so the reviewer can prioritise
+    high-value packs in the pending queue."""
     h = p["hypothesis"] or {}
     cell = _e(str(h.get("cell_id", "?")))
     # HOL-42: PENDING rows get inline action cluster; resolved rows show "—"
@@ -863,15 +866,23 @@ def _build_synthesis_row(p: dict, g: dict) -> str:
     row_sev = attestation_severity(g["attestation"])
     att_tip = ATTESTATION_RULES.get(g["attestation"], "")
     mode_tip = SYNTHESIS_RULES.get(g["synthesis_mode"], "")  # may be empty
+    # HOL-57: pull commercial signal off the engine PlacementCell
+    signal = _commercial_signal_for_pack(p)
+    value_color = _VALUE_COLORS.get(signal["value_tier"], "#5A6E7A")
+    lift_text = signal["lift_label"] or '<span class="govern-lift-pending">—</span>'
     return (
         f'<tr class="cell-row pane-filterable" data-cell-id="{cell}" '
         f'data-row-state="pending" data-severity="{row_sev}" '
         f'data-filter-scope="synthesis" '
         f'data-sort-cell="{cell}" '
+        f'data-sort-value="{_e(signal["value_tier"])}" '
         f'data-sort-mode="{_e(g["synthesis_mode"])}" '
         f'data-sort-attestation="{_e(g["attestation"])}" '
         f'data-sort-reviewed="{_e(g["reviewed_date"])}">'
         f'<td><a class="cell-link" href="#cell-{cell}" data-cell-id="{cell}">cell {cell}</a></td>'
+        f'<td><span class="govern-badge govern-badge--value" '
+        f'style="color:{value_color};">{_e(signal["value_tier"])}</span> '
+        f'<span class="govern-lift">{lift_text}</span></td>'
         f'<td><span class="govern-badge threshold-token" '
         f'style="color:{g["mode_color"]};" title="{_e(mode_tip)}">'
         f'{g["synthesis_mode"]}</span></td>'
@@ -902,6 +913,7 @@ def render_synthesis_pane(packs: list[dict]) -> str:
         '<table class="govern-table" data-sortable-table="synthesis">'
         '<thead><tr>'
         '<th class="sortable" data-sort-key="cell">cell</th>'
+        '<th class="sortable" data-sort-key="value">value · est. lift</th>'
         '<th class="sortable" data-sort-key="mode">mode</th>'
         '<th class="sortable" data-sort-key="attestation">attestation</th>'
         '<th>reviewer</th>'
@@ -974,12 +986,134 @@ def render_topnav() -> str:
 </header>"""
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# HOL-57 — Commercial signal-back on the decision frame.
+#
+# Surfaces what the MRM reviewer's decision actually clears commercially.
+# Pulls Value tier + sized monthly lift from the engine's PlacementCell
+# (which carries ValueScore per PULSE-107). Renders an "Unblocks:" affordance
+# under the trigger sentence + an enriched APPROVE-FOR-PROD confirmation.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _format_gbp_lift(amount: float | None) -> str | None:
+    """Render a £/month figure in a CCO-readable form. Returns None when the
+    engine couldn't size it (no ARPU for the journey)."""
+    if amount is None:
+        return None
+    if amount >= 1_000_000:
+        return f"£{amount / 1_000_000:.1f}m/mo"
+    if amount >= 1_000:
+        return f"£{amount / 1_000:.0f}k/mo"
+    return f"£{amount:.0f}/mo"
+
+
+def _commercial_signal_for_pack(p: dict) -> dict:
+    """Pull the commercial signal off the engine's PlacementCell for this pack.
+
+    Returns a dict with `value_tier`, `lift_gbp` (float or None), `lift_label`
+    (formatted string or None), and `journey_id`. Falls back to defaults when
+    the engine bridge can't resolve the pack (renders as PENDING)."""
+    cell = get_pack_cell(p["meta"]["pack_name"])
+    if cell is None:
+        return {
+            "value_tier": "PENDING",
+            "lift_gbp": None,
+            "lift_label": None,
+            "journey_id": "—",
+        }
+    lift = getattr(cell.value, "estimated_monthly_lift_gbp", None)
+    return {
+        "value_tier": cell.value.tier,
+        "lift_gbp": lift,
+        "lift_label": _format_gbp_lift(lift),
+        "journey_id": cell.journey_id,
+    }
+
+
+_COMMERCIAL_TIERS = {"COMMERCIAL-OPPORTUNITY", "SIGNIFICANT"}
+
+
+def render_unblocks_strip(packs: list[dict]) -> str:
+    """List the COMMERCIAL-OPPORTUNITY / SIGNIFICANT packs gated by the
+    reviewer's pending workflow, sized lift descending.
+
+    Audit framing: an MRM reviewer can't see the commercial cost of holding
+    a model in committee without this affordance. HOL-57 makes the gate
+    transparent to the reviewer.
+    """
+    signals: list[tuple[dict, dict]] = []
+    for p in packs:
+        sig = _commercial_signal_for_pack(p)
+        if sig["value_tier"] in _COMMERCIAL_TIERS:
+            signals.append((p, sig))
+
+    if not signals:
+        return (
+            '<div class="mlops-unblocks-strip mlops-unblocks-strip--empty">'
+            '<span class="mlops-unblocks-label">UNBLOCKS</span>'
+            '<span class="mlops-unblocks-empty">'
+            'no commercial-tier packs currently gated by this workflow'
+            '</span>'
+            '</div>'
+        )
+
+    # Sort: sized lift desc, with None at the end (deterministic for tests)
+    signals.sort(
+        key=lambda ps: (
+            -(ps[1]["lift_gbp"] or 0.0),
+            ps[0]["meta"]["pack_name"],
+        )
+    )
+
+    # Sum sized lift across packs that have one — gives the reviewer a
+    # single "X total at stake" headline. Packs without ARPU contribute
+    # 0 to the total (visible as missing on per-pack lines).
+    total_sized = sum(s["lift_gbp"] for _, s in signals if s["lift_gbp"] is not None)
+    total_label = _format_gbp_lift(total_sized) if total_sized else None
+
+    items_html: list[str] = []
+    for p, s in signals[:4]:  # cap at 4 to keep the strip readable
+        tier = s["value_tier"]
+        tier_color = _VALUE_COLORS.get(tier, "#5A6E7A")
+        lift_text = s["lift_label"] or '<span class="mlops-unblocks-pending">est. pending</span>'
+        items_html.append(
+            f'<li class="mlops-unblocks-item">'
+            f'<span class="mlops-unblocks-tier" style="color:{tier_color};">{tier}</span>'
+            f'<span class="mlops-unblocks-journey">{_e(s["journey_id"])}</span>'
+            f'<span class="mlops-unblocks-lift">{lift_text}</span>'
+            f'</li>'
+        )
+
+    n_more = max(0, len(signals) - 4)
+    more_html = (
+        f'<li class="mlops-unblocks-more">+ {n_more} more</li>' if n_more else ''
+    )
+
+    headline = (
+        f' · <span class="mlops-unblocks-total">~{total_label} held by '
+        f'this workflow</span>'
+        if total_label else ''
+    )
+
+    return (
+        f'<div class="mlops-unblocks-strip">'
+        f'<span class="mlops-unblocks-label">UNBLOCKS</span>'
+        f'<span class="mlops-unblocks-context">{len(signals)} commercial-tier pack'
+        f'{"s" if len(signals) != 1 else ""} gated{headline}</span>'
+        f'<ul class="mlops-unblocks-list">{"".join(items_html)}{more_html}</ul>'
+        f'</div>'
+    )
+
+
 def render_decision_frame(packs: list[dict]) -> str:
     """HOL-44 — Top-of-page decision frame. Replaces the bare procurement-gate
     masthead with a Young/Burt/Rock-aligned "why you are here today" framing.
 
     Composition (matches ticket acceptance):
       - Trigger sentence — computed from worst-cell drift + flagged count
+      - Unblocks strip (HOL-57) — commercial signal-back; shows what packs
+        are gated by this workflow and total £/month at stake
       - Decision frame — 3-button cluster [Approve 14d / Committee / Retrain]
       - Session badge — reviewer + session start + decisions logged
     """
@@ -1023,12 +1157,34 @@ def render_decision_frame(packs: list[dict]) -> str:
     today = _dt.date.today().strftime("%a · %d %b")
     session_start = NOW
 
+    # HOL-57 — what this model gates commercially. Surfaced under the trigger
+    # so the reviewer sees the cost-of-hold before pressing a workflow button.
+    unblocks_html = render_unblocks_strip(packs)
+
+    # HOL-57 — APPROVE FOR PROD 14D carries the worst-pack's commercial
+    # signal so the JS handler can compose an enriched "you just cleared X
+    # worth £Y/mo" confirmation message. None values are passed through as
+    # empty strings; JS handler treats empty as "estimate pending".
+    worst_pack_signal = (
+        _commercial_signal_for_pack(worst_pack)
+        if worst_pack
+        else {"value_tier": "—", "lift_label": None, "journey_id": "—"}
+    )
+    approve_lift_attr = _e(worst_pack_signal["lift_label"] or "", quote=True)
+    approve_journey_attr = _e(worst_pack_signal["journey_id"], quote=True)
+    approve_tier_attr = _e(worst_pack_signal["value_tier"], quote=True)
+
     return f'''
 <div class="mlops-decision-frame {frame_mod}">
   <div class="mlops-decision-trigger">{trigger}</div>
+  {unblocks_html}
   <div class="mlops-decision-actions">
     <button class="mlops-decision-btn mlops-decision-btn--approve"
-            data-decision="approve_14d" type="button">Approve for prod · 14d</button>
+            data-decision="approve_14d"
+            data-pack-journey="{approve_journey_attr}"
+            data-pack-tier="{approve_tier_attr}"
+            data-pack-lift="{approve_lift_attr}"
+            type="button">Approve for prod · 14d</button>
     <button class="mlops-decision-btn mlops-decision-btn--committee"
             data-decision="route_committee" type="button">Route to committee</button>
     <button class="mlops-decision-btn mlops-decision-btn--retrain"
@@ -1269,7 +1425,22 @@ window.holterRecordEvent = function (scope, target, action, reason) {{
       window.holterRecordEvent('model', modelName, decision, null);
       modelDecisions += 1;
       if (countEl) countEl.textContent = modelDecisions;
-      flashConfirm(decision.replace(/_/g, ' '));
+      // HOL-57 — APPROVE FOR PROD 14D acknowledges the commercial action
+      // it clears. Other decisions keep the plain decision-name message.
+      if (decision === 'approve_14d') {{
+        const journey = this.getAttribute('data-pack-journey') || '';
+        const tier = this.getAttribute('data-pack-tier') || '';
+        const lift = this.getAttribute('data-pack-lift') || '';
+        if (journey && lift) {{
+          flashConfirm('cleared ' + journey + ' for 14d prod · ' + lift + ' (' + tier + ')');
+        }} else if (journey) {{
+          flashConfirm('cleared ' + journey + ' for 14d prod · est. pending');
+        }} else {{
+          flashConfirm('approve 14d');
+        }}
+      }} else {{
+        flashConfirm(decision.replace(/_/g, ' '));
+      }}
     }});
   }});
 }})();

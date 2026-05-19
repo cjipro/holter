@@ -44,6 +44,16 @@ bank_policy:
       regulatory_taxonomy: fca_consumer_duty_2.0
       regulatory_section: "PRIN 12"
   vulnerable_cohort_extensions: []
+  # Per-journey-category ARPU (£/customer/month), used by Value
+  # methodology v0.2 (PULSE-107) to size the COMMERCIAL-OPPORTUNITY signal.
+  # Illustrative values for the worked-example scenario — choke_point
+  # (credit applications) is set highest as those drive lending revenue
+  # at higher £/customer than navigation friction on marketing pages.
+  arpu_per_journey:
+    choke_point: 42.0
+    infrastructure: 18.0
+    context_loss: 26.0
+    behavioural_noise: 6.0
 
 cells:
 
