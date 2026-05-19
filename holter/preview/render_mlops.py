@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import datetime as _dt
 import sys
+from dataclasses import dataclass
 from html import escape as _e
 from pathlib import Path
 
@@ -92,10 +93,31 @@ def cohort_drift_series_n(pack_name: str, cohort: str, n: int) -> list[int]:
             for i in range(n)]
 
 
-def lineage_chain_ancestry(pack_name: str, sha: str) -> list[dict]:
+@dataclass(frozen=True)
+class ChainEntry:
+    """HOL-54 — frozen record for one lineage chain hop. Mirrors the eventual
+    pulse.lineage contract shape so the engine can drop in compatible objects."""
+    sha: str
+    pipeline: str
+    dataset: str
+    sealed_at: str
+
+
+@dataclass(frozen=True)
+class CohortSeries:
+    """HOL-54 — bundles label + colour + values for a single cohort line.
+    Replaces the parallel-list signature of multi_sparkline_svg, eliminating
+    silent length-mismatch risk."""
+    label: str
+    color: str
+    values: list[float]
+
+
+def lineage_chain_ancestry(pack_name: str, sha: str) -> list[ChainEntry]:
     """HOL-43 — stub upstream ancestry chain for a pack's lineage hash.
     Closes O'Neil's 'hash is a string not a link' + Banin's 'no upstream
-    pointer' R2 critique. Engine returns this via pulse.lineage in prod."""
+    pointer' R2 critique. Engine returns this via pulse.lineage in prod.
+    HOL-54: returns frozen ChainEntry dataclasses instead of dicts."""
     h = sum(ord(c) for c in pack_name)
     depth = 4 + (h % 3)
     pipelines = [
@@ -103,16 +125,16 @@ def lineage_chain_ancestry(pack_name: str, sha: str) -> list[dict]:
         "lineage.anchor_sealer", "pulse.synthesis.deterministic",
         "telemetry.taq_adapter", "schema.canonical_v2",
     ]
-    chain = []
+    chain: list[ChainEntry] = []
     for i in range(depth):
         ph = (h * 31 + i * 17) % 0xFFFFFFFF
         ds_suffix = (5 - i + (h % 4)) % 5 + 1
-        chain.append({
-            "sha":       f"sha-{ph:08x}_{(ph >> 4) & 0xFFFF:04x}",
-            "pipeline":  pipelines[(h + i) % len(pipelines)],
-            "dataset":   f"taq.session_2026{ds_suffix:02d}",
-            "sealed_at": f"2026-05-{(19 - i * 3) % 28 + 1:02d}",
-        })
+        chain.append(ChainEntry(
+            sha=f"sha-{ph:08x}_{(ph >> 4) & 0xFFFF:04x}",
+            pipeline=pipelines[(h + i) % len(pipelines)],
+            dataset=f"taq.session_2026{ds_suffix:02d}",
+            sealed_at=f"2026-05-{(19 - i * 3) % 28 + 1:02d}",
+        ))
     return chain
 
 
@@ -144,47 +166,47 @@ def cohort_drift_series(pack_name: str, cohort: str) -> list[int]:
             for i in range(14)]
 
 
-def multi_sparkline_svg(series_list: list[list[float]], colors: list[str],
+def multi_sparkline_svg(cohorts: list[CohortSeries],
                         width: int = 200, height: int = 36,
                         baseline: float | None = None,
-                        baseline_color: str = "rgba(180,200,210,0.4)",
-                        labels: list[str] | None = None) -> str:
+                        baseline_color: str = "rgba(180,200,210,0.4)") -> str:
     """Multi-series sparkline — N overlaid trend lines + optional baseline.
 
     HOL-41: replaces the single-series sparkline_svg in DRIFT pane to surface
-    cohort-level drift. Each series gets its own color from `colors`. Baseline
-    renders as a dashed horizontal line (cell-aggregated 30-day mean) so the
-    reader has an anchor for "is this drifting away from baseline."
+    cohort-level drift. Each CohortSeries carries its own label/color/values
+    bundled. Baseline renders as a dashed horizontal line (cell-aggregated
+    30-day mean).
+
+    HOL-54: signature reshaped from parallel `series_list / colors / labels`
+    lists to `list[CohortSeries]` (Hettinger PR-panel: silent length-mismatch
+    risk eliminated).
     """
-    if not series_list or not series_list[0]:
+    if not cohorts or not cohorts[0].values:
         return ""
-    # Y-axis range = union of all series + baseline
+    # Y-axis range = union of all cohort series + baseline
     all_y: list[float] = []
-    for s in series_list:
-        all_y.extend(s)
+    for c in cohorts:
+        all_y.extend(c.values)
     if baseline is not None:
         all_y.append(baseline)
     vmin, vmax = min(all_y), max(all_y)
     span = (vmax - vmin) or 1.0
-    n = len(series_list[0])
+    n = len(cohorts[0].values)
     step = width / max(n - 1, 1)
 
     polylines = []
     # HOL-43 — tag each polyline with data-cohort so the legend can solo on
     # hover (CSS-only dim of other lines)
-    cohort_labels = labels or [""] * len(series_list)
-    for series, color, label in zip(series_list, colors, cohort_labels):
+    for c in cohorts:
         pts = " ".join(
             f"{i*step:.1f},{height - ((v - vmin) / span) * height:.1f}"
-            for i, v in enumerate(series)
+            for i, v in enumerate(c.values)
         )
-        # van Rossum PR-panel: escape label — safe with current stub
-        # ["18-24","25-54","55+"] but breaks if engine later passes a
-        # cohort label containing < or " (e.g. "age_band: <26").
+        # HOL-52 fix-first (van Rossum) — escape label for the data-cohort attr.
         polylines.append(
-            f'<polyline class="ms-line" data-cohort="{_e(label)}" '
+            f'<polyline class="ms-line" data-cohort="{_e(c.label)}" '
             f'points="{pts}" fill="none" '
-            f'stroke="{color}" stroke-width="1.4" opacity="0.85"/>'
+            f'stroke="{c.color}" stroke-width="1.4" opacity="0.85"/>'
         )
 
     baseline_svg = ""
@@ -198,15 +220,14 @@ def multi_sparkline_svg(series_list: list[list[float]], colors: list[str],
     # HOL-43 — invisible day-overlay rectangles carry <title> tooltips
     # showing per-day per-cohort values. Native browser tooltip; zero JS.
     day_rects = []
-    if cohort_labels and labels:
+    if cohorts and cohorts[0].label:
         for i in range(n):
-            day = n - i  # day_N = 1 is "today"
             x = max(0, i * step - step / 2)
             w = step
             tooltip_lines = [f"day -{n - 1 - i} (D{n - i})"]
-            for series, label in zip(series_list, cohort_labels):
-                if i < len(series):
-                    tooltip_lines.append(f"{label}: {series[i]:.0f}")
+            for c in cohorts:
+                if i < len(c.values):
+                    tooltip_lines.append(f"{c.label}: {c.values[i]:.0f}")
             tooltip = " · ".join(tooltip_lines)
             day_rects.append(
                 f'<rect class="ms-day" x="{x:.1f}" y="0" '
@@ -380,39 +401,60 @@ def attestation_severity(attestation: str) -> str:
     return "NOMINAL"
 
 
-# HOL-45 — threshold rule explanations. Keyed by severity OR by metric name.
-# Surfaced via native `title` on the badge or fairness number. Plain-language
-# so a non-statistician can decode (Gigerenzer's R1 + R2 ask).
-THRESHOLD_RULES: dict[str, str] = {
-    # Drift severity rules
+# HOL-54 (Hettinger PR-panel) — split monolith into 4 domain-scoped dicts.
+# Each call site reaches for the right one; misses are clear instead of silent.
+# Plain-language so a non-statistician can decode (Gigerenzer R1 + R2 ask).
+
+DRIFT_RULES: dict[str, str] = {
     "DRIFT_NOMINAL":  "Drift NOMINAL = |delta| < 2pp (no material change)",
     "DRIFT_WATCH":    "Drift WATCH = 2-5pp delta (observe; no action required)",
     "DRIFT_ESCALATE": "Drift ESCALATE = 5-10pp delta (review baseline; flag for next cycle)",
     "DRIFT_ACUTE":    "Drift ACUTE = |delta| >= 10pp (recalibrate threshold; hold deployment)",
-    # Lineage severity rules
+}
+
+LINEAGE_RULES: dict[str, str] = {
     "LINEAGE_NOMINAL":  "Lineage NOMINAL = 0 broken chains (all hashes verified)",
     "LINEAGE_ESCALATE": "Lineage ESCALATE = 1 broken chain (re-seal; review anchor source)",
     "LINEAGE_ACUTE":    "Lineage ACUTE = 2+ broken chains (halt promotions; trace propagation)",
-    # Synthesis severity rules
+}
+
+SYNTHESIS_RULES: dict[str, str] = {
     "SYNTHESIS_NOMINAL":  "Synthesis NOMINAL = 0 LLM_AUGMENTED in prod path",
     "SYNTHESIS_ESCALATE": "Synthesis ESCALATE = 1 LLM_AUGMENTED pack flagged (v1 gate violation)",
     "SYNTHESIS_ACUTE":    "Synthesis ACUTE = 2+ LLM_AUGMENTED packs (governance backlog)",
-    # Status rules
+}
+
+STATUS_RULES: dict[str, str] = {
     "VERIFIED": "VERIFIED = chain hash matches anchor; no tampering detected",
     "BROKEN":   "BROKEN = chain hash mismatch; lineage integrity compromised",
     "STABLE":   "STABLE = chain depth and parents unchanged over last 24h",
-    # Attestation rules
+}
+
+ATTESTATION_RULES: dict[str, str] = {
     "self_declared":          "self_declared = pack author asserted compliance; independent assessment required",
     "attestation_pending":    "attestation_pending = newly-onboarded pack awaiting MRM sign-off",
     "independently_assessed": "independently_assessed = second reviewer confirmed; not yet certified",
     "certified":              "certified = sealed for prod; quarterly recertification due",
-    # Fairness metric rules
+}
+
+FAIRNESS_METRIC_RULES: dict[str, str] = {
     "demographic_parity":  ("demographic_parity ∈ [0,1]; 1 = perfectly equal selection rates across cohorts. "
                             "Floor 0.85 = 15pp tolerance. Below floor = ACUTE."),
     "equalised_odds":      ("equalised_odds ∈ [0,1]; 1 = equal TPR and FPR across cohorts. "
                             "Floor 0.80 = 20pp tolerance. Below floor = ACUTE."),
     "calibration_by_cohort": ("calibration_by_cohort ∈ [0,1]; 1 = predicted probability matches observed rate "
                               "per cohort. Floor 0.90."),
+}
+
+# Aggregated map for the test-suite completeness check + legacy call sites.
+# New code should reach for the domain-scoped dict directly.
+THRESHOLD_RULES: dict[str, str] = {
+    **DRIFT_RULES,
+    **LINEAGE_RULES,
+    **SYNTHESIS_RULES,
+    **STATUS_RULES,
+    **ATTESTATION_RULES,
+    **FAIRNESS_METRIC_RULES,
 }
 
 
@@ -523,14 +565,17 @@ def render_drift_pane(packs: list[dict]) -> str:
         baseline_30d = sum(cell_series) / len(cell_series)
         spark_parts = []
         for win_n, win_label in [(7, "7d"), (14, "14d"), (30, "30d")]:
-            cs_list = [
-                cohort_drift_series_n(p["meta"]["pack_name"], cohort, win_n)
-                for cohort in _COHORT_LABELS
+            # HOL-54: bundle label/color/values per cohort into CohortSeries.
+            cohorts = [
+                CohortSeries(
+                    label=cohort,
+                    color=color,
+                    values=cohort_drift_series_n(p["meta"]["pack_name"], cohort, win_n),
+                )
+                for cohort, color in zip(_COHORT_LABELS, _COHORT_COLORS)
             ]
             svg = multi_sparkline_svg(
-                cs_list, _COHORT_COLORS,
-                width=240, height=28, baseline=baseline_30d,
-                labels=_COHORT_LABELS,
+                cohorts, width=240, height=28, baseline=baseline_30d,
             )
             # Inject the data-window attribute into the SVG root tag
             svg_tagged = svg.replace(
@@ -543,7 +588,7 @@ def render_drift_pane(packs: list[dict]) -> str:
         # HOL-39: cell-id is now a click-target; row carries data-cell-id
         # HOL-45: per-row severity for filter + delta value carries threshold tooltip
         row_sev = classify_drift_severity(delta)
-        delta_tooltip = THRESHOLD_RULES.get(f"DRIFT_{row_sev}", "")
+        delta_tooltip = DRIFT_RULES.get(f"DRIFT_{row_sev}", "")
         drift_rows.append(
             f'<div class="drift-cell cell-row pane-filterable" '
             f'data-cell-id="{cell}" data-severity="{row_sev}" '
@@ -636,7 +681,7 @@ def render_fairness_pane(packs: list[dict]) -> str:
     delta_arrow = "↓" if eo_delta < 0 else "↑"
     delta_str = (
         f'<span style="color:{delta_color};" class="threshold-token" '
-        f'title="{_e(THRESHOLD_RULES["equalised_odds"])}">'
+        f'title="{_e(FAIRNESS_METRIC_RULES["equalised_odds"])}">'
         f'{delta_arrow} {eo_delta:+.2f} vs {FLOOR:.2f} floor</span>'
     )
     traj_str = "↘ BELOW FLOOR" if eo_delta < 0 else "→ WITHIN FLOOR"
@@ -702,10 +747,10 @@ def render_lineage_pane(packs: list[dict]) -> str:
                      '<span class="hash-chain-arrow">root</span>')
             chain_rows.append(
                 f'<div class="hash-chain-row">'
-                f'<span class="hash-chain-sha">{_e(anc["sha"])}</span>'
-                f'<span class="hash-chain-pipeline">{_e(anc["pipeline"])}</span>'
-                f'<span class="hash-chain-dataset">{_e(anc["dataset"])}</span>'
-                f'<span class="hash-chain-date">{_e(anc["sealed_at"])}</span>'
+                f'<span class="hash-chain-sha">{_e(anc.sha)}</span>'
+                f'<span class="hash-chain-pipeline">{_e(anc.pipeline)}</span>'
+                f'<span class="hash-chain-dataset">{_e(anc.dataset)}</span>'
+                f'<span class="hash-chain-date">{_e(anc.sealed_at)}</span>'
                 f'</div>'
                 f'<div class="hash-chain-row">{arrow}</div>'
             )
@@ -717,7 +762,7 @@ def render_lineage_pane(packs: list[dict]) -> str:
         # HOL-45: per-row severity (BROKEN→ACUTE, VERIFIED→NOMINAL) +
         # threshold tooltip on the chain_status badge
         row_sev = "ACUTE" if ls["chain_status"] == "BROKEN" else "NOMINAL"
-        status_tip = THRESHOLD_RULES.get(ls["chain_status"], "")
+        status_tip = STATUS_RULES.get(ls["chain_status"], "")
         detail_rows.append(
             f'<div class="drift-cell cell-row pane-filterable" '
             f'data-cell-id="{cell}" data-severity="{row_sev}" '
@@ -803,8 +848,8 @@ def render_synthesis_pane(packs: list[dict]) -> str:
         # HOL-39: row carries data-cell-id; cell column is the click-target
         # HOL-45: per-row severity for filter + threshold tooltip on attestation
         row_sev = attestation_severity(g["attestation"])
-        att_tip = THRESHOLD_RULES.get(g["attestation"], "")
-        mode_tip = THRESHOLD_RULES.get(g["synthesis_mode"], "")  # may be empty
+        att_tip = ATTESTATION_RULES.get(g["attestation"], "")
+        mode_tip = SYNTHESIS_RULES.get(g["synthesis_mode"], "")  # may be empty
         table_rows.append(
             f'<tr class="cell-row pane-filterable" data-cell-id="{cell}" '
             f'data-row-state="pending" data-severity="{row_sev}" '
