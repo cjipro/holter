@@ -39,10 +39,24 @@ from holter.preview.render_holter import (  # noqa: E402
     headline_pack,
     short_hash,
     _ACTION_COLORS,
+    _DIAGNOSIS_COLORS,
+    _VALUE_COLORS,
+    _RISK_COLORS,
     STATUS_GLOSSARY,
     tooltip_token,
     render_glossary_panel,
 )
+
+# PR-panel fix (Hettinger): the tier_color lookup in render_feed_card was
+# always using _ACTION_COLORS regardless of tier_dim — silent wrong-color
+# bug for non-action dimensions (NOMINAL means different things in
+# Action/Value/Risk, and so does the colour). Route by dimension explicitly.
+_DIM_COLOR_MAPS: dict[str, dict[str, str]] = {
+    "action":    _ACTION_COLORS,
+    "diagnosis": _DIAGNOSIS_COLORS,
+    "value":     _VALUE_COLORS,
+    "risk":      _RISK_COLORS,
+}
 
 NOW = _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
@@ -98,6 +112,9 @@ def select_flagged_grid(flagged: list[dict], hero: dict, n: int = 3) -> list[dic
     hero_journey = hero["journey"]
     hero_signature = hero["cell_score"].signature_id
     seen_journeys: set[str] = set()
+    # Track picked packs by name (set lookup is O(1); previous identity-check
+    # `if sig in out` was O(n²) and fragile if any upstream copies the dict)
+    picked_pack_names: set[str] = {hero_pack_name}
     # Cap each signature at 1 occurrence including hero's so the grid
     # diversifies AWAY from whatever the hero is.
     sig_count: dict[str, int] = {hero_signature: 1}
@@ -105,7 +122,7 @@ def select_flagged_grid(flagged: list[dict], hero: dict, n: int = 3) -> list[dic
 
     # Pass 1: breadth-first by journey AND cap each signature at 1
     for sig in flagged:
-        if sig["pack"]["meta"]["pack_name"] == hero_pack_name:
+        if sig["pack"]["meta"]["pack_name"] in picked_pack_names:
             continue
         if sig["journey"] == hero_journey:
             continue
@@ -116,29 +133,28 @@ def select_flagged_grid(flagged: list[dict], hero: dict, n: int = 3) -> list[dic
             continue
         seen_journeys.add(sig["journey"])
         sig_count[sigid] = sig_count.get(sigid, 0) + 1
+        picked_pack_names.add(sig["pack"]["meta"]["pack_name"])
         out.append(sig)
         if len(out) >= n:
             return out
 
     # Pass 2: breadth-first by journey (allow signature repeats)
     for sig in flagged:
-        if sig["pack"]["meta"]["pack_name"] == hero_pack_name:
-            continue
-        if sig in out:
+        if sig["pack"]["meta"]["pack_name"] in picked_pack_names:
             continue
         if sig["journey"] in seen_journeys:
             continue
         seen_journeys.add(sig["journey"])
+        picked_pack_names.add(sig["pack"]["meta"]["pack_name"])
         out.append(sig)
         if len(out) >= n:
             return out
 
     # Pass 3: fill remaining slots with any unseen card
     for sig in flagged:
-        if sig["pack"]["meta"]["pack_name"] == hero_pack_name:
+        if sig["pack"]["meta"]["pack_name"] in picked_pack_names:
             continue
-        if sig in out:
-            continue
+        picked_pack_names.add(sig["pack"]["meta"]["pack_name"])
         out.append(sig)
         if len(out) >= n:
             return out
@@ -707,13 +723,6 @@ a { color: var(--blue); text-decoration: none; }
 # Rendering helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
-def screen_short(screen_id: str) -> str:
-    parts = (screen_id or "").split(".")
-    if len(parts) >= 3:
-        return f"{parts[0]} · {parts[-2]} · {parts[-1]}"
-    return screen_id
-
-
 def render_topnav() -> str:
     """Same identity strip as Workspace — CJI PULSE logo + utility cluster."""
     return f"""
@@ -814,7 +823,8 @@ def render_feed_card(*, tag: str, tag_color: str, headline: str, summary: str,
     """
     tier_html = ""
     if tier:
-        tier_color = _ACTION_COLORS.get(tier, "var(--amber)")
+        color_map = _DIM_COLOR_MAPS.get(tier_dim, _ACTION_COLORS)
+        tier_color = color_map.get(tier, "var(--amber)")
         tier_html = (
             f'<span class="feed-card-tier-badge" style="color:{tier_color};">'
             f'{tooltip_token(tier_dim, tier)}</span>'

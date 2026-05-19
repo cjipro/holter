@@ -16,7 +16,8 @@ Discipline (unchanged from v0):
 What changed vs v0 (the port):
   - discover_packs() + load_journey_taxonomy() (ported from render_mil_briefing.py)
   - get_pack_cell() consumes PULSE-106 placement scenario for per-pack tiers
-  - render_sidebar() has REAL filter controls (Journey / Time Range / Severity)
+  - render_filter_strip() carries the sticky horizontal filter controls
+    (Journey / Time Range / Severity) — replaces the deprecated sidebar
   - All topbar boxes (1/2/3) read pack data + engine output
   - V3 layer becomes a grid of boxes obeying the same contract:
       · Engine summary: Friction Risk / Placement Posture / Confidence Protocol
@@ -146,6 +147,17 @@ def cell_screens_with_counts(packs: list[dict]) -> list[dict]:
 
 @functools.lru_cache(maxsize=1)
 def _build_pack_cell_index() -> dict[str, Any]:
+    """Load the agentic-AI placement scenario and key its cells by pack_dir.
+
+    Engine-bridge function — failure here cascades to every box that calls
+    get_pack_cell() returning None, which renders as "UNAVAILABLE / PENDING".
+    PR-panel fix (Torvalds + van Rossum): the previous bare-except silently
+    swallowed every failure with zero diagnostic — a broken scenario.yaml
+    or import-chain bug would manifest only as a cosmetic "no data" state
+    and cost an afternoon to find. Now logs the exception so it's visible
+    in stderr while still failing soft (renderer keeps working).
+    """
+    import logging
     try:
         from pulse.scenarios.agentic_ai_placement import run_placement_scenario
         scenario_path = REPO / "pulse" / "scenarios" / "agentic_ai_placement" / "scenario.yaml"
@@ -155,6 +167,10 @@ def _build_pack_cell_index() -> dict[str, Any]:
         matrix = run_placement_scenario()
         return {pack_dir: cell for pack_dir, cell in zip(pack_dirs, matrix.cells)}
     except Exception:
+        logging.exception(
+            "_build_pack_cell_index failed — engine scenario unavailable; "
+            "every box will render as UNAVAILABLE until fixed"
+        )
         return {}
 
 
@@ -1335,63 +1351,12 @@ def render_filter_strip(packs: list[dict]) -> str:
 </div>'''
 
 
-def render_sidebar(packs: list[dict]) -> str:
-    """[Deprecated] Box 0 sidebar — kept for compatibility but no longer
-    rendered. Filters moved to render_filter_strip()."""
-    # Journey checkboxes
-    domains = sorted({(p["hypothesis"] or {}).get("screen_id", "").split(".")[0]
-                       for p in packs if (p["hypothesis"] or {}).get("screen_id")})
-    domain_counts: dict[str, int] = {}
-    for p in packs:
-        d = (p["hypothesis"] or {}).get("screen_id", "").split(".")[0]
-        if d:
-            domain_counts[d] = domain_counts.get(d, 0) + 1
-
-    journey_checks = "".join(
-        f'<label class="sidebar-check">'
-        f'<input type="checkbox" class="sidebar-domain-check" value="{d}" checked>'
-        f'<span>{d}</span>'
-        f'<span class="sidebar-check-count">{domain_counts.get(d, 0)}</span>'
-        f'</label>'
-        for d in domains
-    )
-
-    return f'''
-<aside class="holter-sidebar">
-  <div class="sidebar-inner">
-    <div>
-      <div class="sidebar-section-label">Journeys</div>
-      {journey_checks}
-    </div>
-    <div>
-      <div class="sidebar-section-label">Time Range</div>
-      <select class="sidebar-select" id="sidebar-timerange">
-        <option>Last 7 days</option>
-        <option>Last 30 days</option>
-        <option>Last 90 days</option>
-        <option>Custom range…</option>
-      </select>
-    </div>
-    <div>
-      <div class="sidebar-section-label">Severity</div>
-      <div class="sidebar-radio">
-        <label><input type="radio" name="severity" value="all" checked> All</label>
-        <label><input type="radio" name="severity" value="positive"> Positive only</label>
-        <label><input type="radio" name="severity" value="negative"> Negative only</label>
-      </div>
-    </div>
-    <div>
-      <div class="sidebar-section-label">Scope</div>
-      <div style="font-size:10px; color:var(--text-3); line-height:1.5;">
-        {len(packs)} packs · 4 journeys × 3 signatures
-      </div>
-    </div>
-    <div class="sidebar-actions">
-      <button class="sidebar-btn" id="sidebar-apply">APPLY</button>
-      <button class="sidebar-btn secondary" id="sidebar-reset">RESET</button>
-    </div>
-  </div>
-</aside>'''
+# NOTE: render_sidebar() was deleted on 2026-05-19 per PR-panel review.
+# It was declared deprecated when filters moved to render_filter_strip(),
+# but it still emitted a complete <aside> with a duplicate name="severity"
+# form input that would collide with the live filter strip if accidentally
+# rendered. Per van Rossum's catch in the panel review — dead generators
+# that produce real HTML are liabilities, not compatibility shims.
 
 
 # ─────────────────────────────────────────────────────────────────────────────
