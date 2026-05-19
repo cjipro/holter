@@ -328,6 +328,34 @@ def render_journey_row(packs: list[dict]) -> str:
     )
 
 
+def _format_lift_gbp(amount: float | None) -> str | None:
+    """HOL-56 — Render a £/month figure in a CCO-readable form. None when
+    engine couldn't size it (no ARPU for the journey). Mirrors the format
+    used in render_mlops.py for cross-surface consistency."""
+    if amount is None:
+        return None
+    if amount >= 1_000_000:
+        return f"£{amount / 1_000_000:.1f}m"
+    if amount >= 1_000:
+        return f"£{amount / 1_000:.0f}k"
+    return f"£{amount:.0f}"
+
+
+_COMMERCIAL_TIERS = {"COMMERCIAL-OPPORTUNITY", "SIGNIFICANT"}
+
+
+def _workspace_default_pack(packs: list[dict]) -> dict:
+    """HOL-56 — Workspace prefers a COMMERCIAL-OPPORTUNITY pack as the default
+    selection so the new commercial framing demonstrates on first load. Falls
+    back to shared headline_pack (cell 10 / cards-abandon) when no commercial
+    pack is registered. Selection-driven nav overrides this on user pick."""
+    for p in packs:
+        cs = get_pack_cell(p["meta"]["pack_name"])
+        if cs is not None and cs.value.tier in _COMMERCIAL_TIERS:
+            return p
+    return headline_pack(packs)
+
+
 def render_box1(packs: list[dict]) -> str:
     """Box 1 — VERDICT (selection-driven).
 
@@ -336,7 +364,7 @@ def render_box1(packs: list[dict]) -> str:
     Design-stub now: uses headline_pack as the selected unit until
     pulse.workspace.verdict_for(selection) lands (engine-side).
     """
-    pack = headline_pack(packs)
+    pack = _workspace_default_pack(packs)
     if not pack:
         return render_box(
             header=box_header("VERDICT", "no selection"),
@@ -416,6 +444,33 @@ def render_box1(packs: list[dict]) -> str:
         verdict_synthesis = ("verdict pending — engine scenario not yet wired "
                              "for this selection.")
 
+    # HOL-56 — commercial sizing block. When the engine surfaces a sized
+    # monthly lift (PULSE-107 v0.2) AND the pack carries a commercial-tier
+    # Value classification, promote the £ figure to a primary-KPI block
+    # between ACTION and the governance chip strip. The chip strip still
+    # carries the Value tier for governance traceability, but the £ figure
+    # is what the CCO/COO arrives looking for.
+    commercial_block = ""
+    if cell_score and value_label in {"COMMERCIAL-OPPORTUNITY", "SIGNIFICANT"}:
+        lift_gbp = getattr(cell_score.value, "estimated_monthly_lift_gbp", None)
+        if lift_gbp is not None:
+            commercial_block = body_primary_kpi(
+                value=_format_lift_gbp(lift_gbp),
+                label="ESTIMATED MONTHLY LIFT",
+                sub=f"at observed conversion rates · {value_label.lower().replace('-', ' ')}",
+                color=_VALUE_COLORS.get(value_label, "var(--blue)"),
+            )
+        else:
+            # Value tier is commercial but ARPU not configured — render a
+            # placeholder so the box reflects the engine's prioritisation
+            # signal even when sized output is missing.
+            commercial_block = body_primary_kpi(
+                value=value_label,
+                label="VALUE TIER",
+                sub="sized lift pending — bank_policy ARPU not configured for this journey",
+                color=_VALUE_COLORS.get(value_label, "var(--blue)"),
+            )
+
     return render_box(
         header=box_header(key_area, "key area · selection-driven"),
         accent_color=tier_color,
@@ -426,6 +481,7 @@ def render_box1(packs: list[dict]) -> str:
         ),
         body=(
             body_action_primary("ACTION", recommendation, tier_color)
+            + commercial_block
             + body_chip_strip(supporting_chips)
             + body_lines([
                 (f'<strong>What this means:</strong> {verdict_synthesis}',
@@ -553,7 +609,7 @@ def render_box3(packs: list[dict]) -> str:
     of the underlying evidence — full drill-down lives in V3 panels below.
     Stub trend + counts now; engine returns the time-series + cohort cuts later.
     """
-    pack = headline_pack(packs)
+    pack = _workspace_default_pack(packs)
     if not pack:
         return render_box(
             header=box_header("EVIDENCE", "key data"),
@@ -592,10 +648,46 @@ def render_box3(packs: list[dict]) -> str:
     else:
         cohort_over = "—"
 
-    return render_box(
-        header=box_header("EVIDENCE", "key data · 30-day trend"),
-        accent_color=delta_color,
-        headline=headline_stat_card(
+    # HOL-56 — Box 3 KPI swap. When the engine has classified the pack as a
+    # commercial-tier (COMMERCIAL-OPPORTUNITY or SIGNIFICANT) AND surfaces a
+    # sized monthly lift (PULSE-107 v0.2), the headline becomes commercial-
+    # at-stake instead of operational "affected sessions today." Operational
+    # stat moves to the disclosure detail. NOMINAL/WATCH packs keep their
+    # operational KPI — sized lift on those is trivially small and would
+    # weaken the framing rather than strengthen it.
+    is_commercial_pack = (
+        cell_score is not None
+        and cell_score.value.tier in _COMMERCIAL_TIERS
+    )
+    sized_lift = (
+        getattr(cell_score.value, "estimated_monthly_lift_gbp", None)
+        if is_commercial_pack else None
+    )
+    has_commercial = sized_lift is not None
+
+    if has_commercial:
+        commercial_color = _VALUE_COLORS.get(cell_score.value.tier, "var(--green)")
+        headline_card = headline_stat_card(
+            label="ESTIMATED MONTHLY LIFT · AT STAKE",
+            value=_format_lift_gbp(sized_lift) + "/mo",
+            delta=f"{cell_score.value.tier} · conv-rate delta {cell_score.value.conversion_rate_delta:.0%}",
+            traj=f"{delta_dir} {delta_abs:+d} sessions/wk · friction widening" if delta_abs > 0 else f"{delta_dir} EASING",
+            meta_left=f"30-day affected: {total_30d:,} sessions",
+            meta_right=NOW,
+            progress_pct=int(100 * today_n / peak_day) if peak_day else 0,
+        )
+        what_this_tells_us = (
+            "<strong>What this tells us:</strong> sized lift at observed "
+            "conversion rates; drill V3 for cohort cuts &amp; journey replay"
+        )
+        primary_kpi_block = body_primary_kpi(
+            value=f"{today_n}",
+            label="AFFECTED SESSIONS · TODAY",
+            sub=f"30-day total: {total_30d:,} cumulative · {delta_abs:+d} vs 7d ago",
+            color="var(--blue)",
+        )
+    else:
+        headline_card = headline_stat_card(
             label="AFFECTED SESSIONS · TODAY",
             value=f"{today_n}",
             delta=f"{delta_dir} {delta_abs:+d} vs 7d ago ({delta_pct:+d}%)",
@@ -603,7 +695,22 @@ def render_box3(packs: list[dict]) -> str:
             meta_left=f"30-day total: {total_30d:,}",
             meta_right=NOW,
             progress_pct=int(100 * today_n / peak_day) if peak_day else 0,
-        ),
+        )
+        what_this_tells_us = (
+            "<strong>What this tells us:</strong> climbing trend — friction "
+            "compounding week-over-week; drill V3 for cohort cuts &amp; journey replay"
+        )
+        primary_kpi_block = body_primary_kpi(
+            value=f"{total_30d:,}",
+            label="30-DAY TOTAL",
+            sub="cumulative affected sessions",
+            color="var(--blue)",
+        )
+
+    return render_box(
+        header=box_header("EVIDENCE", "key data · 30-day trend"),
+        accent_color=delta_color,
+        headline=headline_card,
         body=(
             f'<div style="padding:4px 0 2px; font-size:9px; color:var(--text-3); '
             f'letter-spacing:1.4px; text-transform:uppercase; '
@@ -614,18 +721,8 @@ def render_box3(packs: list[dict]) -> str:
             + (f' · crossed day {crossed_at_day+1}' if crossed_at_day is not None else '')
             + f'</span>'
             f'</div>'
-            # HOL-17 — pass reference_value so the sparkline shows the ceiling
             + sparkline_svg(trend, spark_color, reference_value=designed_ceiling)
-            # HOL-15 — ONE primary supporting KPI (was 3 competing tiles).
-            # 30-day total = scale signal; peak_day duplicates the sparkline
-            # and cohort_over may be unavailable for some packs.
-            + body_primary_kpi(
-                value=f"{total_30d:,}",
-                label="30-DAY TOTAL",
-                sub="cumulative affected sessions",
-                color="var(--blue)",
-            )
-            # HOL-15 — secondary KPIs behind native <details> progressive disclosure
+            + primary_kpi_block
             + body_disclosure(
                 summary="DETAIL",
                 content=(
@@ -633,11 +730,7 @@ def render_box3(packs: list[dict]) -> str:
                     f'<span><strong>Cohort over-index:</strong> {cohort_over} (vulnerable vs baseline)</span>'
                 ),
             )
-            + body_lines([
-                ("<strong>What this tells us:</strong> climbing trend — friction "
-                 "compounding week-over-week; drill V3 for cohort cuts & journey replay",
-                 "var(--text-2)"),
-            ])
+            + body_lines([(what_this_tells_us, "var(--text-2)")])
         ),
         footer=box_footer(
             "evidence v0.1", NOW, live=True,
