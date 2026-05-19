@@ -1036,25 +1036,35 @@ def render_page() -> str:
   }});
 }})();
 
-// HOL-42 — Attest / Challenge / Defer affordance. In-session event log;
-// engine wiring is PULSE's job, this surface renders the affordance + the
-// in-session state change so a reviewer can record a governance decision.
+// HOL-42 + HOL-44 — In-session event log. HOL-51 (Hickey): both
+// cell-scope (Attest/Challenge/Defer) and model-scope (Approve/Committee/
+// Retrain) writers share a single envelope so the eventual engine
+// consumer doesn't have to demux on scope.
+//
+//   {{ scope: 'cell' | 'model',
+//     target: cell_id | model_name,
+//     action: string,
+//     reason: string | null,
+//     reviewer: string,
+//     timestamp: ISO-8601 }}
 window.holterEventLog = window.holterEventLog || [];
+window.holterRecordEvent = function (scope, target, action, reason) {{
+  const event = {{
+    scope: scope,
+    target: target,
+    action: action,
+    reason: reason || null,
+    reviewer: 'HA',
+    timestamp: new Date().toISOString(),
+  }};
+  window.holterEventLog.push(event);
+  console.log('[holter-event]', event);
+  return event;
+}};
 
 (function () {{
-  const REVIEWER = 'HA';  // session reviewer initials (top-nav avatar)
-
   function recordAction(cellId, action, reason) {{
-    const event = {{
-      cell_id: cellId,
-      action: action,
-      reason: reason || null,
-      reviewer: REVIEWER,
-      timestamp: new Date().toISOString(),
-    }};
-    window.holterEventLog.push(event);
-    console.log('[holter-event]', event);
-    return event;
+    return window.holterRecordEvent('cell', cellId, action, reason);
   }}
 
   function resolveRow(cellId, action) {{
@@ -1075,10 +1085,13 @@ window.holterEventLog = window.holterEventLog || [];
   function updateSessionLog() {{
     const log = document.getElementById('govern-session-log');
     if (!log) return;
-    const n = window.holterEventLog.length;
+    // HOL-51: count only cell-scope events for the cell-scope tray;
+    // model-scope events are tracked separately by the decision frame.
+    const cellEvents = window.holterEventLog.filter(e => e.scope === 'cell');
+    const n = cellEvents.length;
     const initialPending = parseInt(log.getAttribute('data-pending'), 10);
     const stillPending = Math.max(0, initialPending - n);
-    const last = n ? window.holterEventLog[n - 1] : null;
+    const last = n ? cellEvents[n - 1] : null;
     if (n === 0) {{
       log.innerHTML = 'session log · 0 decisions recorded · ' +
         '<span class="govern-session-log-count">' + initialPending +
@@ -1087,7 +1100,7 @@ window.holterEventLog = window.holterEventLog || [];
       log.classList.add('govern-session-log--active');
       log.innerHTML = 'session log · ' +
         '<span class="govern-session-log-count">' + n + '</span> recorded · ' +
-        stillPending + ' pending · last: cell ' + last.cell_id + ' ' +
+        stillPending + ' pending · last: cell ' + last.target + ' ' +
         last.action.toUpperCase() +
         (last.reason ? ' (' + last.reason.slice(0, 30) + ')' : '');
     }}
@@ -1150,11 +1163,17 @@ window.holterEventLog = window.holterEventLog || [];
 }})();
 
 // HOL-44 — Top-of-page decision frame. Three model-scope decisions:
-// Approve 14d / Route to committee / Request retraining. Writes the
-// same window.holterEventLog used by HOL-42 (scope: 'model' vs cell-N).
+// Approve 14d / Route to committee / Request retraining.
+// HOL-51: routes through the unified window.holterRecordEvent writer
+// with scope='model' + target=<model_name>; same envelope as cell-scope.
 (function () {{
   const countEl = document.getElementById('mlops-decision-count');
   const confirmEl = document.getElementById('mlops-decision-confirm');
+  const frameEl = document.querySelector('.mlops-decision-frame');
+  const modelName = frameEl
+    ? (frameEl.querySelector('.mlops-decision-trigger-pack')
+        ?.textContent.trim() || 'unknown_model')
+    : 'unknown_model';
   let modelDecisions = 0;
 
   function flashConfirm(text) {{
@@ -1176,17 +1195,10 @@ window.holterEventLog = window.holterEventLog || [];
       this.setAttribute('data-locked', 'true');
       this.disabled = true;
       const decision = this.getAttribute('data-decision');
-      window.holterEventLog = window.holterEventLog || [];
-      window.holterEventLog.push({{
-        scope: 'model',
-        decision: decision,
-        reviewer: 'HA',
-        timestamp: new Date().toISOString(),
-      }});
+      window.holterRecordEvent('model', modelName, decision, null);
       modelDecisions += 1;
       if (countEl) countEl.textContent = modelDecisions;
       flashConfirm(decision.replace(/_/g, ' '));
-      console.log('[holter-event]', window.holterEventLog[window.holterEventLog.length - 1]);
     }});
   }});
 }})();
