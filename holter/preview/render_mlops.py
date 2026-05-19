@@ -225,6 +225,66 @@ def drift_narrative(pack_name: str, series: list[int]) -> str:
     )
 
 
+# HOL-40 — severity gradient: 4 tiers control narrative rendering.
+# Materiality thresholds per pane keep narratives information-rich when present.
+
+def render_severity_narrative(severity: str, body_html: str) -> str:
+    """Render a narrative at the right visual weight for its severity.
+
+    NOMINAL  → single status token (no narrative)
+    WATCH    → compact muted summary
+    ESCALATE → full 4-clause block (default; current behaviour)
+    ACUTE    → full block + red rail + ACUTE prefix, non-suppressible
+
+    Raskin's R1 rule: if every state transition generates the same paragraph
+    shape, the medium trains people to ignore it.
+    """
+    sev = severity.lower()
+    if sev == "nominal":
+        return (
+            f'<div class="mlops-narrative mlops-narrative--nominal">'
+            f'▬ NOMINAL · no action required'
+            f'</div>'
+        )
+    cls = {
+        "watch":    "mlops-narrative mlops-narrative--watch",
+        "escalate": "mlops-narrative mlops-narrative--escalate",
+        "acute":    "mlops-narrative mlops-narrative--acute",
+    }.get(sev, "mlops-narrative")
+    return f'<div class="{cls}">{body_html}</div>'
+
+
+def classify_drift_severity(worst_delta: int) -> str:
+    """Materiality thresholds per ticket: |delta| < 2 NOMINAL / 2-5 WATCH /
+    5-10 ESCALATE / >10 ACUTE."""
+    a = abs(worst_delta)
+    if a < 2:   return "NOMINAL"
+    if a <= 5:  return "WATCH"
+    if a <= 10: return "ESCALATE"
+    return "ACUTE"
+
+
+def classify_fairness_severity(n_deviations: int) -> str:
+    if n_deviations == 0: return "NOMINAL"
+    if n_deviations == 1: return "WATCH"
+    if n_deviations <= 3: return "ESCALATE"
+    return "ACUTE"
+
+
+def classify_lineage_severity(n_broken: int) -> str:
+    if n_broken == 0: return "NOMINAL"
+    if n_broken == 1: return "ESCALATE"
+    return "ACUTE"
+
+
+def classify_synthesis_severity(n_llm: int) -> str:
+    """LLM_AUGMENTED in prod is the v1 immutability gate violation —
+    ESCALATE/ACUTE depending on count."""
+    if n_llm == 0: return "NOMINAL"
+    if n_llm == 1: return "ESCALATE"
+    return "ACUTE"
+
+
 def fairness_narrative(pack_name: str, fair: dict) -> str:
     """One-paragraph fairness narrative for the deviation alert."""
     worst_metric, worst_value = min(
@@ -324,6 +384,40 @@ CSS_EXTRA = """
   color: var(--text);
 }
 .mlops-narrative strong { color: var(--text); }
+
+/* HOL-40 — severity gradient on narratives. Uniform paragraphs at uniform
+   weight will train reviewers to skip them (Raskin's R1 critique). 4 tiers
+   of visual weight match 4 tiers of actionability. */
+.mlops-narrative--nominal {
+  background: transparent;
+  border-left-color: var(--text-3);
+  padding: 4px 12px;
+  font-size: 10px; color: var(--text-3);
+  font-family: var(--mono); letter-spacing: 1px; text-transform: uppercase;
+}
+.mlops-narrative--watch {
+  background: var(--card-2);
+  border-left-color: var(--amber);
+  padding: 6px 12px;
+  font-size: 11px; color: var(--text-2);
+}
+.mlops-narrative--escalate {
+  /* current default styling; explicit class for clarity */
+  background: var(--card-elev);
+  border-left-color: var(--amber);
+}
+.mlops-narrative--acute {
+  background: var(--card-elev);
+  border-left-width: 4px;
+  border-left-color: var(--red);
+  box-shadow: 0 0 0 1px rgba(230, 51, 51, 0.25);
+  /* Non-suppressible — no opacity drop, no collapse */
+}
+.mlops-narrative--acute::before {
+  content: "▲ ACUTE · ";
+  font-family: var(--mono); font-weight: 800;
+  letter-spacing: 1.4px; color: var(--red);
+}
 """
 
 
@@ -388,14 +482,17 @@ def render_drift_pane(packs: list[dict]) -> str:
             f'</div>'
         )
 
+    # HOL-40 — narrative severity gradient driven by worst-cell delta
+    drift_sev = classify_drift_severity(worst_delta)
     narrative = ""
     if worst_pack:
         series = drift_series(worst_pack["meta"]["pack_name"])
-        narrative = (
-            f'<div class="mlops-narrative">'
-            f'{drift_narrative(worst_pack["meta"]["pack_name"], series)}'
-            f'</div>'
+        narrative = render_severity_narrative(
+            drift_sev,
+            drift_narrative(worst_pack["meta"]["pack_name"], series),
         )
+    elif drift_sev == "NOMINAL":
+        narrative = render_severity_narrative("NOMINAL", "")
 
     return render_box(
         header=box_header("DRIFT MONITORS", "14-day window"),
@@ -429,10 +526,11 @@ def render_fairness_pane(packs: list[dict]) -> str:
     below_eo = sum(1 for _, f in fair_records if f["equalised_odds"] < 0.85)
     below_cc = sum(1 for _, f in fair_records if f["calibration_by_cohort"] < 0.85)
 
-    narrative = (
-        f'<div class="mlops-narrative">'
-        f'{fairness_narrative(worst_pack["meta"]["pack_name"], worst_fair)}'
-        f'</div>'
+    # HOL-40 — severity driven by deviation count
+    fair_sev = classify_fairness_severity(n_alerts)
+    narrative = render_severity_narrative(
+        fair_sev,
+        fairness_narrative(worst_pack["meta"]["pack_name"], worst_fair),
     )
 
     return render_box(
@@ -497,16 +595,15 @@ def render_lineage_pane(packs: list[dict]) -> str:
             meta_right=NOW,
             progress_pct=chain_health_pct,
         ),
-        body="".join(detail_rows) + (
-            f'<div class="mlops-narrative">'
-            f'<strong>What changed:</strong> {n_broken} pack chain'
-            f'{"s" if n_broken != 1 else ""} reported BROKEN. '
-            f'<strong>For whom:</strong> any reviewer or regulator querying '
-            f'these packs gets a chain-integrity failure. '
-            f'<strong>Evidence:</strong> lineage_verifier.verify() output. '
-            f'<strong>Response:</strong> '
-            f'{"trace + reseal chain anchors before next promotion" if n_broken else "no action — all chains green"}.'
-            f'</div>'
+        # HOL-40 — severity driven by BROKEN count (0 → NOMINAL → single-token render)
+        body="".join(detail_rows) + render_severity_narrative(
+            classify_lineage_severity(n_broken),
+            (f'<strong>What changed:</strong> {n_broken} pack chain'
+             f'{"s" if n_broken != 1 else ""} reported BROKEN. '
+             f'<strong>For whom:</strong> any reviewer or regulator querying '
+             f'these packs gets a chain-integrity failure. '
+             f'<strong>Evidence:</strong> lineage_verifier.verify() output. '
+             f'<strong>Response:</strong> trace + reseal chain anchors before next promotion.'),
         ),
         footer=box_footer(
             "lineage v0.1", NOW, live=True,
@@ -548,16 +645,14 @@ def render_synthesis_pane(packs: list[dict]) -> str:
         '</table>'
     )
 
-    # Engine v1 immutability gate: LLM_AUGMENTED refused in decision packs
-    # per CLAUDE.md (Pulse Design Direction). Surface that explicitly.
-    gate_note = (
-        f'<div class="mlops-narrative">'
-        f'<strong>v1 immutability gate:</strong> {n_llm} LLM_AUGMENTED pack'
-        f'{"s" if n_llm != 1 else ""} flagged. Per pulse/synthesis/SYNTHESIS_DESIGN.md '
-        f'the v1 gate refuses synthesis_mode: llm_augmented in decision packs. '
-        f'<strong>Response:</strong> '
-        f'{"hold packs out of prod; route through governance review before enabling" if n_llm else "no action — all packs DETERMINISTIC"}.'
-        f'</div>'
+    # HOL-40 — severity driven by LLM_AUGMENTED count
+    gate_note = render_severity_narrative(
+        classify_synthesis_severity(n_llm),
+        (f'<strong>v1 immutability gate:</strong> {n_llm} LLM_AUGMENTED pack'
+         f'{"s" if n_llm != 1 else ""} flagged. Per pulse/synthesis/SYNTHESIS_DESIGN.md '
+         f'the v1 gate refuses synthesis_mode: llm_augmented in decision packs. '
+         f'<strong>Response:</strong> '
+         f'hold packs out of prod; route through governance review before enabling.')
     )
 
     return render_box(
