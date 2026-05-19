@@ -189,6 +189,71 @@ def summary_for(signature: str, diagnosis: str, pack_name: str) -> str:
     return templates[idx]
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# HOL-24 — per-card delta layer (stubs; engine returns these later)
+# ─────────────────────────────────────────────────────────────────────────────
+
+_DELTA_TIMES = ["2h ago", "6h ago", "yesterday", "3 days ago", "last week"]
+_DELTA_CHANGES = [
+    ("→ new",                          "var(--blue)"),
+    ("↑ escalated from WATCH",         "var(--amber)"),
+    ("↑ escalated from REGULATORY-FLAG", "var(--red)"),
+    ("↑ escalated from COMMERCIAL-OPP", "var(--amber)"),
+    ("→ existing",                     "var(--text-3)"),
+    ("↓ de-escalated from ACUTE",      "var(--green)"),
+]
+_DELTA_CONFIDENCE = [
+    ("HIGH",   "0.91", "var(--green)"),
+    ("HIGH",   "0.88", "var(--green)"),
+    ("MEDIUM", "0.74", "var(--amber)"),
+    ("MEDIUM", "0.69", "var(--amber)"),
+    ("LOW",    "0.62", "var(--red)"),
+    ("LOW",    "0.55", "var(--red)"),
+]
+
+
+def card_delta(pack_name: str) -> dict:
+    """Deterministic stub delta values for a pack. Engine returns these
+    on the verdict object once pulse.workspace.feed_for(role) lands."""
+    h = sum(ord(c) for c in pack_name)
+    time_str = _DELTA_TIMES[h % len(_DELTA_TIMES)]
+    change_str, change_color = _DELTA_CHANGES[(h // 3) % len(_DELTA_CHANGES)]
+    conf_label, conf_score, conf_color = _DELTA_CONFIDENCE[(h // 7) % len(_DELTA_CONFIDENCE)]
+    n_findings = 1 + (h % 7)
+    return {
+        "time": time_str,
+        "change": change_str,
+        "change_color": change_color,
+        "conf_label": conf_label,
+        "conf_score": conf_score,
+        "conf_color": conf_color,
+        "n_findings": n_findings,
+    }
+
+
+def render_confidence_chip(delta: dict) -> str:
+    """Small chip next to the tier badge — engine confidence in the verdict."""
+    return (
+        f'<span class="confidence-chip" '
+        f'style="color:{delta["conf_color"]};border-color:{delta["conf_color"]};" '
+        f'data-tooltip="Engine confidence in this verdict — drivers visible in Workspace (HOL-19).">'
+        f'{delta["conf_label"]} {delta["conf_score"]}'
+        f'</span>'
+    )
+
+
+def render_delta_strip(delta: dict, preview_text: str = "") -> str:
+    """One-line meta strip: time-since-surfaced · tier-change · preview."""
+    preview_html = f'<span>· {preview_text}</span>' if preview_text else ""
+    return (
+        f'<div class="delta-strip">'
+        f'<span>surfaced {delta["time"]}</span>'
+        f'<span style="color:{delta["change_color"]};">· {delta["change"]}</span>'
+        f'{preview_html}'
+        f'</div>'
+    )
+
+
 # Stub data for AWAITING REVIEW and MLOPS — placeholders until engine
 # returns review-state and MLOps surface ships
 _STUB_AWAITING_REVIEW = [
@@ -493,6 +558,23 @@ a { color: var(--blue); text-decoration: none; }
 }
 .feed-card-cta:hover { color: var(--teal); }
 
+/* HOL-24 — confidence chip + delta strip */
+.confidence-chip {
+  font-family: var(--mono); font-weight: 800;
+  font-size: 9px; letter-spacing: 1px;
+  padding: 2px 7px;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+}
+.delta-strip {
+  display: flex; align-items: center; gap: 6px;
+  font-family: var(--mono); font-size: 10px;
+  letter-spacing: 0.4px;
+  color: var(--text-3);
+  margin-top: 6px;
+}
+.delta-strip > span { white-space: nowrap; }
+
 /* Hover tooltip — reused pattern from Workspace */
 [data-tooltip] { position: relative; }
 [data-tooltip]:hover::after {
@@ -585,6 +667,9 @@ def render_hero(top_signal: dict) -> str:
         f"pack: {pack['meta']['pack_name']} · sha256:{sha} · "
         f"verdict v0 · DuckDB-backed (PULSE)"
     ).replace('"', "&quot;")
+    # HOL-24 — delta meta: confidence chip + time-since-surfaced + tier-change + click preview
+    delta = card_delta(pack["meta"]["pack_name"])
+    preview_text = f"{delta['n_findings']} sub-findings · open in Workspace"
     return f"""
 <a class="hero-card" style="border-left-color:{color}; text-decoration:none; color:inherit;"
    href="http://localhost:8504/" target="_blank">
@@ -593,11 +678,12 @@ def render_hero(top_signal: dict) -> str:
       <span class="hero-card-tier-badge" style="color:{color};">
         {tooltip_token("action", tier)}
       </span>
+      {render_confidence_chip(delta)}
       <span>FLAGGED · {journey}</span>
-      <span>· {NOW}</span>
     </div>
     <div class="hero-card-headline">{headline}</div>
     <div class="hero-card-summary">{summary}</div>
+    {render_delta_strip(delta, preview_text)}
   </div>
   <span class="hero-card-cta" data-tooltip="{provenance_tooltip}">INVESTIGATE →</span>
 </a>"""
@@ -606,8 +692,14 @@ def render_hero(top_signal: dict) -> str:
 def render_feed_card(*, tag: str, tag_color: str, headline: str, summary: str,
                      tier: str | None = None, tier_dim: str = "action",
                      meta_left: str = "", meta_right: str = "",
-                     cta_label: str = "OPEN →", accent: str = "var(--border)") -> str:
-    """Generic feed card — reused for FLAGGED, AWAITING REVIEW, MLOPS."""
+                     cta_label: str = "OPEN →", accent: str = "var(--border)",
+                     delta: dict | None = None, preview_text: str = "") -> str:
+    """Generic feed card — reused for FLAGGED, AWAITING REVIEW, MLOPS.
+
+    HOL-24: optional `delta` adds confidence chip beside tier badge AND
+    a delta strip (time-since-surfaced + tier-change + preview) below
+    the summary. `preview_text` is the "X sub-findings · ..." pre-click hint.
+    """
     tier_html = ""
     if tier:
         tier_color = _ACTION_COLORS.get(tier, "var(--amber)")
@@ -615,15 +707,19 @@ def render_feed_card(*, tag: str, tag_color: str, headline: str, summary: str,
             f'<span class="feed-card-tier-badge" style="color:{tier_color};">'
             f'{tooltip_token(tier_dim, tier)}</span>'
         )
+    confidence_html = render_confidence_chip(delta) if delta else ""
+    delta_html = render_delta_strip(delta, preview_text) if delta else ""
     return f"""
 <a class="feed-card" style="border-left-color:{accent}; text-decoration:none; color:inherit;"
    href="http://localhost:8504/" target="_blank">
   <div class="feed-card-meta">
     <span class="feed-card-tag" style="color:{tag_color};">{tag}</span>
+    {confidence_html}
     {tier_html}
   </div>
   <div class="feed-card-headline">{headline}</div>
   <div class="feed-card-summary">{summary}</div>
+  {delta_html}
   <div class="feed-card-foot">
     <span>{meta_left}</span>
     <span>{meta_right}</span>
@@ -653,6 +749,8 @@ def render_flagged_feed(flagged: list[dict], hero: dict) -> str:
         summary = varied or cs.placement_recommendation
         if len(summary) > 180:
             summary = summary[:177] + "…"
+        delta = card_delta(pack["meta"]["pack_name"])
+        preview = f"{delta['n_findings']} sub-findings"
         cards.append(render_feed_card(
             tag="FLAGGED",
             tag_color="var(--red)" if tier == "ACUTE" else "var(--amber)",
@@ -664,6 +762,8 @@ def render_flagged_feed(flagged: list[dict], hero: dict) -> str:
             meta_right=NOW,
             cta_label="INVESTIGATE →",
             accent=accent,
+            delta=delta,
+            preview_text=preview,
         ))
     if not cards:
         return ""
@@ -684,6 +784,8 @@ def render_awaiting_review(items: list[dict]) -> str:
         return ""
     cards = []
     for it in items:
+        # HOL-24 — synthetic delta for stub items (consistent shape, unique seed)
+        delta = card_delta(it.get("pack_hint", it["title"]))
         cards.append(render_feed_card(
             tag="AWAITING REVIEW",
             tag_color="var(--teal)",
@@ -693,6 +795,8 @@ def render_awaiting_review(items: list[dict]) -> str:
             meta_right=f"closed {it['submitted']}",
             cta_label="REVIEW →",
             accent="var(--teal)",
+            delta=delta,
+            preview_text="1 reviewer assigned · fairness sign-off required",
         ))
     return f"""
 <section>
@@ -710,6 +814,7 @@ def render_mlops_alerts(items: list[dict]) -> str:
     cards = []
     for it in items:
         sev_color = "var(--amber)" if it["severity"] == "WATCH" else "var(--red)"
+        delta = card_delta(it["title"])
         cards.append(render_feed_card(
             tag="MLOPS",
             tag_color=sev_color,
@@ -721,6 +826,8 @@ def render_mlops_alerts(items: list[dict]) -> str:
             meta_right="MLOps Console (HOL-6 pending)",
             cta_label="ACKNOWLEDGE →",
             accent=sev_color,
+            delta=delta,
+            preview_text="affects 1 cell · auto-resolves on backfill",
         ))
     return f"""
 <section>
