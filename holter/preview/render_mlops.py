@@ -1017,16 +1017,25 @@ def render_drift_pane(packs: list[dict]) -> str:
 
 
 def render_fairness_pane(packs: list[dict]) -> str:
-    """Pane 2 — FAIRNESS RE-CHECK. Per-pack metrics + worst-pack narrative."""
+    """Pane 2 — FAIRNESS RE-CHECK. Per-pack metrics + worst-pack narrative.
+
+    HOL-46 — Raskin's R1+R2 carryover: "FAIRNESS RE-CHECK still leads with
+    three competing numbers at equal visual weight. Pick one." Header now
+    rebuilt with a single dominant primary KPI (worst equalised-odds) and
+    PASS/FAIL counts demoted to supporting annotation. Gigerenzer's "0.85
+    GINI requires a stats card" closed via threshold tooltip on the
+    primary value.
+    """
+    FLOOR = 0.85
     fair_records = [(p, fairness_record(p["meta"]["pack_name"])) for p in packs]
     alerts = [(p, f) for p, f in fair_records if f["deviation_alert"]]
     n_alerts = len(alerts)
     worst_pack, worst_fair = (alerts[0] if alerts else fair_records[0])
 
     # Per-metric distribution (count of packs below 0.85 floor)
-    below_dp = sum(1 for _, f in fair_records if f["demographic_parity"] < 0.85)
-    below_eo = sum(1 for _, f in fair_records if f["equalised_odds"] < 0.85)
-    below_cc = sum(1 for _, f in fair_records if f["calibration_by_cohort"] < 0.85)
+    below_dp = sum(1 for _, f in fair_records if f["demographic_parity"] < FLOOR)
+    below_eo = sum(1 for _, f in fair_records if f["equalised_odds"] < FLOOR)
+    below_cc = sum(1 for _, f in fair_records if f["calibration_by_cohort"] < FLOOR)
 
     # HOL-40 — severity driven by deviation count
     fair_sev = classify_fairness_severity(n_alerts)
@@ -1035,14 +1044,41 @@ def render_fairness_pane(packs: list[dict]) -> str:
         fairness_narrative(worst_pack["meta"]["pack_name"], worst_fair),
     )
 
+    # HOL-46 — primary KPI = worst pack's equalised-odds (the floor-breach
+    # signal). Single dominant number; PASS/FAIL counts move into meta_left
+    # at the demoted supporting weight provided by headline_stat_card.
+    worst_eo = min(f["equalised_odds"] for _, f in fair_records)
+    n_pass = sum(1 for _, f in fair_records if f["equalised_odds"] >= FLOOR)
+    n_fail = len(fair_records) - n_pass
+    eo_delta = worst_eo - FLOOR  # negative = below floor
+    delta_color = "var(--red)" if eo_delta < 0 else "var(--green)"
+    delta_arrow = "↓" if eo_delta < 0 else "↑"
+    delta_str = (
+        f'<span style="color:{delta_color};" class="threshold-token" '
+        f'title="{_e(THRESHOLD_RULES["equalised_odds"])}">'
+        f'{delta_arrow} {eo_delta:+.2f} vs {FLOOR:.2f} floor</span>'
+    )
+    traj_str = "↘ BELOW FLOOR" if eo_delta < 0 else "→ WITHIN FLOOR"
+    meta_left_str = (
+        f'<span style="color:var(--green); font-weight:700;">{n_pass} passing</span>'
+        f' · '
+        f'<span style="color:var(--red); font-weight:700;">{n_fail} fail</span>'
+        f' · across {len(packs)} packs'
+    )
+
     return render_box(
         header=box_header("FAIRNESS RE-CHECK", "30-day window"),
         accent_color="var(--amber)" if n_alerts else "var(--green)",
-        headline=headline_chip_strip([
-            (str(n_alerts),       "DEVIATIONS",   "var(--red)" if n_alerts else "var(--text-3)"),
-            (str(len(packs)),     "PACKS",        "var(--blue)"),
-            ("0.85",              "FLOOR",        "var(--green)"),
-        ]),
+        # HOL-46 — primary stat card replaces the 3-chip equal-weight strip
+        headline=headline_stat_card(
+            label="WORST EQUALISED-ODDS",
+            value=f"{worst_eo:.2f}",
+            delta=delta_str,
+            traj=traj_str,
+            meta_left=meta_left_str,
+            meta_right=NOW,
+            progress_pct=int(worst_eo * 100),
+        ),
         body=body_kpi_tiles([
             (f"{below_dp}/{len(packs)}", "DEM PARITY",  "below floor",
              "var(--red)" if below_dp else "var(--green)"),
