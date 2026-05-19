@@ -61,8 +61,8 @@ def test_methodology_versions_propagated(matrix: PlacementMatrix) -> None:
     audit footer requirement."""
     assert matrix.diagnosis_methodology_version == "0.1.0"
     assert matrix.risk_methodology_version == "0.1.0"
-    # Value bumped to v0.2.0 by PULSE-107 (sized commercial estimate).
-    assert matrix.value_methodology_version == "0.2.0"
+    # Value bumped to v0.3.0 (friction-volume primary, £ scaffold secondary).
+    assert matrix.value_methodology_version == "0.3.0"
 
 
 def test_matrix_exercises_full_diagnosis_enum(matrix: PlacementMatrix) -> None:
@@ -140,7 +140,7 @@ def test_markdown_render_includes_all_cells(matrix: PlacementMatrix) -> None:
     # methodology versions in the audit footer
     assert "Diagnosis 0.1.0" in md
     assert "Risk 0.1.0" in md
-    assert "Value 0.2.0" in md
+    assert "Value 0.3.0" in md
 
 
 def test_every_cell_has_a_placement_recommendation(matrix: PlacementMatrix) -> None:

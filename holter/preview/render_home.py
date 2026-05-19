@@ -49,6 +49,9 @@ from holter.preview._shared import (  # noqa: E402
     STATUS_GLOSSARY,
     tooltip_token,
     render_glossary_panel,
+    friction_volume_value,
+    friction_volume_headline,
+    commercial_scaffold,
 )
 
 # PR-panel fix (Hettinger): the tier_color lookup in render_feed_card was
@@ -135,33 +138,21 @@ def collect_commercial_signals(packs: list[dict]) -> list[dict]:
         value_tier = cs.value.tier
         if value_tier not in _COMMERCIAL_VALUE_TIERS:
             continue
-        lift = getattr(cs.value, "estimated_monthly_lift_gbp", None)
+        sessions_wk = getattr(cs.value, "recoverable_sessions_per_week", 0) or 0
         out.append({
             "pack": p,
             "cell_score": cs,
             "tier": cs.action_tier,             # for badge consistency
             "value_tier": value_tier,
-            "lift_gbp": lift,
+            "sessions_per_week": sessions_wk,
             "rank": _VALUE_TIER_RANK.get(value_tier, 99),
             "journey": cs.journey_id,
         })
-    # Sort: value-tier rank ascending (COMMERCIAL-OPPORTUNITY first),
-    # then sized lift descending (None → 0, sorts to end of band).
-    out.sort(key=lambda r: (r["rank"], -(r["lift_gbp"] or 0.0)))
+    # Sort: value-tier rank ascending (COMMERCIAL-OPPORTUNITY first), then
+    # friction volume descending — sessions/wk recoverable, NOT £ (no-pound-
+    # pandora: £ never drives the ranking; the friction is the signal).
+    out.sort(key=lambda r: (r["rank"], -(r["sessions_per_week"] or 0)))
     return out
-
-
-def _format_lift_gbp_home(amount: float | None) -> str | None:
-    """HOL-55 — same shape as render_holter._format_lift_gbp; defined locally
-    so render_home.py doesn't take a cross-renderer import (preserves the
-    HOL-35 Cannon condition)."""
-    if amount is None:
-        return None
-    if amount >= 1_000_000:
-        return f"£{amount / 1_000_000:.1f}m/mo"
-    if amount >= 1_000:
-        return f"£{amount / 1_000:.0f}k/mo"
-    return f"£{amount:.0f}/mo"
 
 
 def select_flagged_grid(flagged: list[dict], hero: dict, n: int = 3) -> list[dict]:
@@ -1000,18 +991,19 @@ def render_hero(top_signal: dict, lens: str = "compliance") -> str:
     # HOL-24 — delta meta: confidence chip + time-since-surfaced + tier-change + click preview
     delta = card_delta(pack["meta"]["pack_name"])
     preview_text = f"{delta['n_findings']} sub-findings · open in Workspace"
-    # HOL-55 — sized lift on the hero too. Renders above CTA so it's the
-    # last thing the eye sees before the click target.
-    lift_label = _format_lift_gbp_home(
-        getattr(cs.value, "estimated_monthly_lift_gbp", None)
-    )
+    # HOL-55 + no-pound-pandora — friction-volume signal on the hero.
+    # Primary unit is sessions/wk recoverable; £ scaffold (if ARPU set) rides
+    # in the sub-line, never as the headline number.
+    volume_label = friction_volume_value(cs.value, period="week")
+    scaffold = commercial_scaffold(cs.value)
     hero_lift_html = (
         f'<div class="hero-card-lift">'
-        f'<span class="hero-card-lift-label">EST. LIFT</span>'
-        f'<span class="hero-card-lift-value">{lift_label}</span>'
-        f'<span class="hero-card-lift-sub">at observed conv. rates</span>'
+        f'<span class="hero-card-lift-label">RECOVERABLE</span>'
+        f'<span class="hero-card-lift-value">{volume_label}/wk</span>'
+        f'<span class="hero-card-lift-sub">sessions · '
+        f'{scaffold if scaffold else "friction volume"}</span>'
         f'</div>'
-        if lift_label else ""
+        if volume_label else ""
     )
     tag_label = "OPPORTUNITY" if lens == "commercial" else "FLAGGED"
     return f"""
@@ -1042,12 +1034,15 @@ def render_feed_card(*, tag: str, tag_color: str, headline: str, summary: str,
                      delta: dict | None = None, preview_text: str = "",
                      suppress_change: bool = False,
                      is_pending: bool = False,
-                     lift_label: str | None = None) -> str:
+                     volume_label: str | None = None,
+                     scaffold: str | None = None) -> str:
     """Generic feed card — reused for FLAGGED, AWAITING REVIEW, MLOPS.
 
     HOL-24: optional `delta` adds confidence chip beside tier badge AND
     a delta strip (time-since-surfaced + tier-change + preview) below
     the summary. `preview_text` is the "X sub-findings · ..." pre-click hint.
+    HOL-55 + no-pound-pandora: `volume_label` is the friction-volume primary
+    (e.g. "~300"); `scaffold` is the optional £ secondary shown in the sub.
     """
     tier_html = ""
     if tier:
@@ -1069,16 +1064,17 @@ def render_feed_card(*, tag: str, tag_color: str, headline: str, summary: str,
         '<span class="feed-card-held-tag">HELD · awaiting sign-off</span>'
         if is_pending else ""
     )
-    # HOL-55 — sized commercial lift strip when the pack carries one.
-    # Sits between summary and delta-strip so the £ figure is reachable
-    # before the audit metadata. Falls back silently when None.
+    # HOL-55 + no-pound-pandora — friction-volume strip. Primary unit is
+    # sessions/wk recoverable; £ scaffold (if any) rides in the sub-line
+    # with its per-session assumption named. Falls back silently when None.
     lift_html = (
         f'<div class="feed-card-lift">'
-        f'<span class="feed-card-lift-label">EST. LIFT</span>'
-        f'<span class="feed-card-lift-value">{lift_label}</span>'
-        f'<span class="feed-card-lift-sub">at observed conv. rates</span>'
+        f'<span class="feed-card-lift-label">RECOVERABLE</span>'
+        f'<span class="feed-card-lift-value">{volume_label}/wk</span>'
+        f'<span class="feed-card-lift-sub">sessions · '
+        f'{scaffold if scaffold else "friction volume"}</span>'
         f'</div>'
-        if lift_label else ""
+        if volume_label else ""
     )
     return f"""
 <a class="feed-card{pending_class}" style="border-left-color:{accent}; text-decoration:none; color:inherit;"
@@ -1140,12 +1136,11 @@ def render_flagged_feed(flagged: list[dict], hero: dict) -> str:
         if len(summary) > 180:
             summary = summary[:177] + "…"
         preview = f"{delta['n_findings']} sub-findings"
-        # HOL-55 — even on the compliance lens, surface sized lift when the
-        # engine has it. ACUTE packs are often also COMMERCIAL-OPPORTUNITY
+        # HOL-55 — even on the compliance lens, surface friction volume when
+        # the engine has it. ACUTE packs are often also COMMERCIAL-OPPORTUNITY
         # on the Value axis (the load-bearing dual-lens case).
-        lift_label = _format_lift_gbp_home(
-            getattr(cs.value, "estimated_monthly_lift_gbp", None)
-        )
+        volume_label = friction_volume_value(cs.value, period="week")
+        scaffold = commercial_scaffold(cs.value)
         cards.append(render_feed_card(
             tag="FLAGGED",
             tag_color="var(--red)" if tier == "ACUTE" else "var(--amber)",
@@ -1160,7 +1155,8 @@ def render_flagged_feed(flagged: list[dict], hero: dict) -> str:
             delta=delta,
             preview_text=preview,
             suppress_change=suppress,
-            lift_label=lift_label,
+            volume_label=volume_label,
+            scaffold=scaffold,
         ))
     if not cards:
         return ""
@@ -1214,7 +1210,8 @@ def render_commercial_queue(signals: list[dict], hero: dict | None) -> str:
             summary = summary[:177] + "…"
         delta = card_delta(pack["meta"]["pack_name"])
         preview = f"{delta['n_findings']} sub-findings"
-        lift_label = _format_lift_gbp_home(sig.get("lift_gbp"))
+        volume_label = friction_volume_value(cs.value, period="week")
+        scaffold = commercial_scaffold(cs.value)
         cards.append(render_feed_card(
             tag="OPPORTUNITY",
             tag_color="var(--green)" if value_tier == "COMMERCIAL-OPPORTUNITY" else "var(--amber)",
@@ -1229,19 +1226,19 @@ def render_commercial_queue(signals: list[dict], hero: dict | None) -> str:
             delta=delta,
             preview_text=preview,
             suppress_change=False,
-            lift_label=lift_label,
+            volume_label=volume_label,
+            scaffold=scaffold,
         ))
 
-    # Total at-stake headline across the queue (sums sized lifts, ignoring None).
-    total_lift = sum(
-        s["lift_gbp"] for s in signals if s.get("lift_gbp") is not None
-    )
-    total_label = _format_lift_gbp_home(total_lift) if total_lift else None
+    # Aggregate headline across the queue — friction volume (sessions/wk),
+    # NOT £ (no-pound-pandora). This is the CCO's board-ready number.
+    total_sessions = sum(s.get("sessions_per_week", 0) for s in signals)
+    total_label = f"~{total_sessions:,} sessions/wk recoverable" if total_sessions else None
     remaining = max(0, len(signals) - len(cards))
     count_label = (
-        f"~{total_label} total at stake · {remaining} more"
+        f"{total_label} · {remaining} more"
         if total_label and remaining
-        else (f"~{total_label} total at stake" if total_label else
+        else (total_label if total_label else
               (f"{remaining} more in queue" if remaining else "all surfaced"))
     )
 

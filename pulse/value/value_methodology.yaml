@@ -12,7 +12,7 @@
 #
 # Filed under PULSE-101.
 
-methodology_version: 0.2.0
+methodology_version: 0.3.0
 
 # Closed enum of Value tier-words. Order is severity-ascending — used by
 # score.py to convert numeric tier (0..3) back to a tier-word. Extending
@@ -114,8 +114,21 @@ max_tier: 3
 commercial_estimate:
   weekly_to_monthly_multiplier: 4.345
 
-  # v0.2 ships point estimate only. Confidence interval is reserved on the
+  # v0.3 — friction-volume is the PRIMARY commercial unit. The engine
+  # computes recoverable_sessions_per_week/_month from metrics alone (no
+  # ARPU): affected_customers_7d × counterfactual_baseline_pct, scaled by
+  # the multiplier above for the monthly figure. Surfaces MUST lead with
+  # this unit (it is in the bank's own outcome vocabulary and carries no
+  # monetisation assumption).
+  #
+  # estimated_monthly_lift_gbp remains available as a SECONDARY cost
+  # scaffold (recoverable_sessions_per_month × arpu_per_journey) — renderers
+  # treat it as "≈ £X/mo at £Y/session", never as the lead stat. Surfacing
+  # raw £ as the primary signal is forbidden (opens the assumption
+  # Pandora's box — every figure invites scrutiny on ARPU/baseline rather
+  # than on the friction itself).
+
+  # v0.3 ships point estimate only. Confidence interval is reserved on the
   # output dataclass but always returns None until the bootstrap fixture from
-  # HOL-48 ships and provides per-input sampling distributions. v0.3 fills
-  # this in.
-  confidence_interval_method: "v0.2_point_estimate_only"
+  # HOL-48 ships and provides per-input sampling distributions.
+  confidence_interval_method: "v0.3_point_estimate_only"

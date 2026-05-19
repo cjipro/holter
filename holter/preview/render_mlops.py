@@ -67,6 +67,9 @@ from holter.preview._shared import (  # noqa: E402
     _ACTION_COLORS,
     _RISK_COLORS,
     _VALUE_COLORS,
+    friction_volume_value,
+    friction_volume_headline,
+    commercial_scaffold,
 )
 
 NOW = _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -869,7 +872,10 @@ def _build_synthesis_row(p: dict, g: dict) -> str:
     # HOL-57: pull commercial signal off the engine PlacementCell
     signal = _commercial_signal_for_pack(p)
     value_color = _VALUE_COLORS.get(signal["value_tier"], "#5A6E7A")
-    lift_text = signal["lift_label"] or '<span class="govern-lift-pending">—</span>'
+    # HOL-57 + no-pound-pandora: friction-volume is the primary unit on the
+    # row; £ scaffold (if any) goes in a tooltip, never as the cell text.
+    volume_text = signal["volume_label"] or '<span class="govern-lift-pending">—</span>'
+    scaffold_tip = signal.get("scaffold") or ""
     return (
         f'<tr class="cell-row pane-filterable" data-cell-id="{cell}" '
         f'data-row-state="pending" data-severity="{row_sev}" '
@@ -882,7 +888,7 @@ def _build_synthesis_row(p: dict, g: dict) -> str:
         f'<td><a class="cell-link" href="#cell-{cell}" data-cell-id="{cell}">cell {cell}</a></td>'
         f'<td><span class="govern-badge govern-badge--value" '
         f'style="color:{value_color};">{_e(signal["value_tier"])}</span> '
-        f'<span class="govern-lift">{lift_text}</span></td>'
+        f'<span class="govern-lift" title="{_e(scaffold_tip)}">{volume_text}</span></td>'
         f'<td><span class="govern-badge threshold-token" '
         f'style="color:{g["mode_color"]};" title="{_e(mode_tip)}">'
         f'{g["synthesis_mode"]}</span></td>'
@@ -913,7 +919,7 @@ def render_synthesis_pane(packs: list[dict]) -> str:
         '<table class="govern-table" data-sortable-table="synthesis">'
         '<thead><tr>'
         '<th class="sortable" data-sort-key="cell">cell</th>'
-        '<th class="sortable" data-sort-key="value">value · est. lift</th>'
+        '<th class="sortable" data-sort-key="value">value · sessions/wk</th>'
         '<th class="sortable" data-sort-key="mode">mode</th>'
         '<th class="sortable" data-sort-key="attestation">attestation</th>'
         '<th>reviewer</th>'
@@ -996,37 +1002,31 @@ def render_topnav() -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _format_gbp_lift(amount: float | None) -> str | None:
-    """Render a £/month figure in a CCO-readable form. Returns None when the
-    engine couldn't size it (no ARPU for the journey)."""
-    if amount is None:
-        return None
-    if amount >= 1_000_000:
-        return f"£{amount / 1_000_000:.1f}m/mo"
-    if amount >= 1_000:
-        return f"£{amount / 1_000:.0f}k/mo"
-    return f"£{amount:.0f}/mo"
-
-
 def _commercial_signal_for_pack(p: dict) -> dict:
     """Pull the commercial signal off the engine's PlacementCell for this pack.
 
-    Returns a dict with `value_tier`, `lift_gbp` (float or None), `lift_label`
-    (formatted string or None), and `journey_id`. Falls back to defaults when
-    the engine bridge can't resolve the pack (renders as PENDING)."""
+    Returns a dict with `value_tier`, `journey_id`, friction-volume signal
+    (`volume_label` — the PRIMARY unit, sessions/wk recoverable) +
+    `sessions_per_week` for sorting, and `scaffold` (the optional SECONDARY
+    £ framing that names its own per-session ARPU assumption). Falls back to
+    defaults when the engine bridge can't resolve the pack (renders PENDING).
+
+    No bare £: per no-pound-pandora, surfaces lead with friction volume."""
     cell = get_pack_cell(p["meta"]["pack_name"])
     if cell is None:
         return {
             "value_tier": "PENDING",
-            "lift_gbp": None,
-            "lift_label": None,
+            "volume_label": None,
+            "sessions_per_week": 0,
+            "scaffold": None,
             "journey_id": "—",
         }
-    lift = getattr(cell.value, "estimated_monthly_lift_gbp", None)
     return {
         "value_tier": cell.value.tier,
-        "lift_gbp": lift,
-        "lift_label": _format_gbp_lift(lift),
+        "volume_label": friction_volume_headline(cell.value, period="week"),
+        "sessions_per_week": getattr(
+            cell.value, "recoverable_sessions_per_week", 0) or 0,
+        "scaffold": commercial_scaffold(cell.value),
         "journey_id": cell.journey_id,
     }
 
@@ -1058,30 +1058,32 @@ def render_unblocks_strip(packs: list[dict]) -> str:
             '</div>'
         )
 
-    # Sort: sized lift desc, with None at the end (deterministic for tests)
+    # Sort: friction volume (sessions/wk) desc — the primary commercial unit.
+    # No £ in the sort key (no-pound-pandora).
     signals.sort(
         key=lambda ps: (
-            -(ps[1]["lift_gbp"] or 0.0),
+            -(ps[1]["sessions_per_week"] or 0),
             ps[0]["meta"]["pack_name"],
         )
     )
 
-    # Sum sized lift across packs that have one — gives the reviewer a
-    # single "X total at stake" headline. Packs without ARPU contribute
-    # 0 to the total (visible as missing on per-pack lines).
-    total_sized = sum(s["lift_gbp"] for _, s in signals if s["lift_gbp"] is not None)
-    total_label = _format_gbp_lift(total_sized) if total_sized else None
+    # Aggregate friction volume held by the workflow — the headline unit is
+    # sessions/week, NOT £. This is what the reviewer is actually holding
+    # when they route a model to committee.
+    total_sessions = sum(s["sessions_per_week"] for _, s in signals)
 
     items_html: list[str] = []
     for p, s in signals[:4]:  # cap at 4 to keep the strip readable
         tier = s["value_tier"]
         tier_color = _VALUE_COLORS.get(tier, "#5A6E7A")
-        lift_text = s["lift_label"] or '<span class="mlops-unblocks-pending">est. pending</span>'
+        volume_text = s["volume_label"] or '<span class="mlops-unblocks-pending">vol. pending</span>'
+        # £ scaffold (if any) lives in the title attr — secondary, on hover.
+        scaffold_tip = s.get("scaffold") or ""
         items_html.append(
-            f'<li class="mlops-unblocks-item">'
+            f'<li class="mlops-unblocks-item" title="{_e(scaffold_tip)}">'
             f'<span class="mlops-unblocks-tier" style="color:{tier_color};">{tier}</span>'
             f'<span class="mlops-unblocks-journey">{_e(s["journey_id"])}</span>'
-            f'<span class="mlops-unblocks-lift">{lift_text}</span>'
+            f'<span class="mlops-unblocks-lift">{volume_text}</span>'
             f'</li>'
         )
 
@@ -1091,9 +1093,9 @@ def render_unblocks_strip(packs: list[dict]) -> str:
     )
 
     headline = (
-        f' · <span class="mlops-unblocks-total">~{total_label} held by '
-        f'this workflow</span>'
-        if total_label else ''
+        f' · <span class="mlops-unblocks-total">~{total_sessions:,} sessions/wk '
+        f'held by this workflow</span>'
+        if total_sessions else ''
     )
 
     return (
@@ -1113,7 +1115,8 @@ def render_decision_frame(packs: list[dict]) -> str:
     Composition (matches ticket acceptance):
       - Trigger sentence — computed from worst-cell drift + flagged count
       - Unblocks strip (HOL-57) — commercial signal-back; shows what packs
-        are gated by this workflow and total £/month at stake
+        are gated by this workflow and total sessions/week held (friction
+        volume, NOT £ — see no-pound-pandora)
       - Decision frame — 3-button cluster [Approve 14d / Committee / Retrain]
       - Session badge — reviewer + session start + decisions logged
     """
@@ -1161,16 +1164,19 @@ def render_decision_frame(packs: list[dict]) -> str:
     # so the reviewer sees the cost-of-hold before pressing a workflow button.
     unblocks_html = render_unblocks_strip(packs)
 
-    # HOL-57 — APPROVE FOR PROD 14D carries the worst-pack's commercial
-    # signal so the JS handler can compose an enriched "you just cleared X
-    # worth £Y/mo" confirmation message. None values are passed through as
-    # empty strings; JS handler treats empty as "estimate pending".
+    # HOL-57 + no-pound-pandora — APPROVE FOR PROD 14D carries the worst-pack's
+    # friction-volume signal (sessions/wk), NOT £. Christensen's hard-gate:
+    # the regulated-approval audit confirmation must record customer-exposure
+    # units, never a raw £ figure (which would make money the unit-of-record
+    # for a customer-protection decision).
     worst_pack_signal = (
         _commercial_signal_for_pack(worst_pack)
         if worst_pack
-        else {"value_tier": "—", "lift_label": None, "journey_id": "—"}
+        else {"value_tier": "—", "volume_label": None, "journey_id": "—"}
     )
-    approve_lift_attr = _e(worst_pack_signal["lift_label"] or "", quote=True)
+    # Strip the trailing "recoverable" word for the compact button attr.
+    _vol = worst_pack_signal.get("volume_label") or ""
+    approve_volume_attr = _e(_vol.replace(" recoverable", ""), quote=True)
     approve_journey_attr = _e(worst_pack_signal["journey_id"], quote=True)
     approve_tier_attr = _e(worst_pack_signal["value_tier"], quote=True)
 
@@ -1183,7 +1189,7 @@ def render_decision_frame(packs: list[dict]) -> str:
             data-decision="approve_14d"
             data-pack-journey="{approve_journey_attr}"
             data-pack-tier="{approve_tier_attr}"
-            data-pack-lift="{approve_lift_attr}"
+            data-pack-volume="{approve_volume_attr}"
             type="button">Approve for prod · 14d</button>
     <button class="mlops-decision-btn mlops-decision-btn--committee"
             data-decision="route_committee" type="button">Route to committee</button>
@@ -1425,16 +1431,18 @@ window.holterRecordEvent = function (scope, target, action, reason) {{
       window.holterRecordEvent('model', modelName, decision, null);
       modelDecisions += 1;
       if (countEl) countEl.textContent = modelDecisions;
-      // HOL-57 — APPROVE FOR PROD 14D acknowledges the commercial action
-      // it clears. Other decisions keep the plain decision-name message.
+      // HOL-57 + no-pound-pandora — APPROVE FOR PROD 14D records the
+      // customer-exposure unit it clears (sessions/wk), NOT £. The audit
+      // confirmation must speak in friction-volume — money is never the
+      // unit-of-record for a customer-protection approval.
       if (decision === 'approve_14d') {{
         const journey = this.getAttribute('data-pack-journey') || '';
         const tier = this.getAttribute('data-pack-tier') || '';
-        const lift = this.getAttribute('data-pack-lift') || '';
-        if (journey && lift) {{
-          flashConfirm('cleared ' + journey + ' for 14d prod · ' + lift + ' (' + tier + ')');
+        const volume = this.getAttribute('data-pack-volume') || '';
+        if (journey && volume) {{
+          flashConfirm('cleared ' + journey + ' for 14d prod · ' + volume + ' (' + tier + ')');
         }} else if (journey) {{
-          flashConfirm('cleared ' + journey + ' for 14d prod · est. pending');
+          flashConfirm('cleared ' + journey + ' for 14d prod · volume pending');
         }} else {{
           flashConfirm('approve 14d');
         }}

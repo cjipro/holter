@@ -138,13 +138,31 @@ audit-trail story simple ("this base tier, plus these adjustments,
 clamped at the top"). The numeric tier (0..3) is exposed for
 downstream sorting / 2×2 cell logic.
 
+## v0.3 — friction-volume PRIMARY, £ scaffold SECONDARY
+
+The categorical tier is a prioritisation badge. The **primary commercial
+unit** is friction-volume: `recoverable_sessions_per_week` /
+`recoverable_sessions_per_month` = `affected_customers_7d ×
+counterfactual_baseline_pct` (scaled to the window). Computed from metrics
+alone — **no ARPU dependency**, always populated. This is the unit surfaces
+MUST lead with: it is in the bank's own outcome vocabulary (sessions
+recovered, calls deflected, abandonments prevented) and carries no
+monetisation assumption.
+
+**Raw £ as a primary signal is forbidden** (the assumption Pandora's box —
+every £ figure invites scrutiny on ARPU / baseline / cohort definitions,
+derailing the conversation onto methodology instead of friction). The
+`estimated_monthly_lift_gbp` field remains as a **secondary cost scaffold**
+only: renderers show it as "≈ £X/mo at £Y/session", naming the per-session
+ARPU assumption (`arpu_per_session_gbp`) so the reader sees the assumption,
+not just the conclusion. Never the lead stat.
+
 ## v0.2 — sized commercial estimate (PULSE-107)
 
 The categorical tier above is a prioritisation badge — it answers "which
 packs should the product team pay attention to first?" It does **not**
-answer "how much money is at stake?" v0.2 adds a sized estimate that
-HOL renderers can show alongside the badge so a CCO/COO sees magnitude,
-not just rank.
+answer "how much money is at stake?" v0.2 added a sized £ estimate; v0.3
+(above) demotes it to a scaffold and makes friction-volume primary.
 
 **Output fields on `ValueScore` (v0.2):**
 

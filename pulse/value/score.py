@@ -32,7 +32,7 @@ _METHODOLOGY_PATH = Path(__file__).parent / "value_methodology.yaml"
 
 @dataclass(frozen=True)
 class ValueScore:
-    """Computed Value tier + audit footprint + (v0.2) sized commercial estimate.
+    """Computed Value tier + audit footprint + commercial signal.
 
     Categorical fields (v0.1):
       `tier` is one of the methodology's closed enum (NOMINAL / WATCH /
@@ -42,18 +42,25 @@ class ValueScore:
       `methodology_version` and `inputs_hash` together let any consumer
       reproduce or audit the score later.
 
-    Commercial estimate (v0.2 — PULSE-107):
-      `estimated_monthly_lift_gbp` — point estimate of monthly revenue
-      recoverable if the friction were removed. None when the deployment's
-      bank_policy.yaml lacks an ARPU entry for the relevant journey_category.
-      `conversion_rate_delta` — counterfactual lift in conversion rate (0..1);
-      aliased to ValueMetrics.counterfactual_baseline_pct in v0.2 and always
-      populated.
-      `confidence_interval` — reserved on the output but always None in v0.2;
-      v0.3 fills from bootstrap fixture (HOL-48 — engine-blocked).
-      `arpu_source` — provenance of the ARPU value used: "bank_policy" when
-      an entry matched the journey_category, None when no match (in which
-      case `estimated_monthly_lift_gbp` is also None)."""
+    Friction-volume signal (v0.3 — the PRIMARY commercial unit):
+      `recoverable_sessions_per_week` / `_per_month` — count of affected
+      sessions that would complete if the friction were removed
+      (affected_customers_7d × counterfactual_baseline_pct, scaled to the
+      window). This is the unit surfaces should LEAD with — it is in the
+      bank's own outcome vocabulary and needs no monetisation assumption.
+      Always populated (computed from metrics alone, no ARPU needed).
+
+    Cost scaffold (v0.2 — SECONDARY, never primary):
+      `estimated_monthly_lift_gbp` — recoverable_sessions_per_month × ARPU.
+      A DERIVED cost framing for the friction-volume signal; renderers must
+      treat it as a scaffold ("≈ £X/mo at £Y/session"), never as the lead
+      stat. None when bank_policy.yaml lacks an ARPU entry for the journey.
+      `arpu_per_session_gbp` — the resolved per-session ARPU used, so the
+      scaffold can name its own assumption transparently. None when unset.
+      `conversion_rate_delta` — counterfactual conversion lift (0..1),
+      aliased to ValueMetrics.counterfactual_baseline_pct; always populated.
+      `confidence_interval` — reserved; always None until HOL-48 bootstrap.
+      `arpu_source` — "bank_policy" when ARPU matched, None when no match."""
 
     tier: str
     numeric_tier: int
@@ -61,7 +68,10 @@ class ValueScore:
     adjustments_applied: tuple[str, ...]
     methodology_version: str
     inputs_hash: str
+    recoverable_sessions_per_week: int | None = None
+    recoverable_sessions_per_month: int | None = None
     estimated_monthly_lift_gbp: float | None = None
+    arpu_per_session_gbp: float | None = None
     conversion_rate_delta: float | None = None
     confidence_interval: tuple[float, float] | None = None
     arpu_source: str | None = None
@@ -74,7 +84,10 @@ class ValueScore:
             "adjustments_applied": list(self.adjustments_applied),
             "methodology_version": self.methodology_version,
             "inputs_hash": self.inputs_hash,
+            "recoverable_sessions_per_week": self.recoverable_sessions_per_week,
+            "recoverable_sessions_per_month": self.recoverable_sessions_per_month,
             "estimated_monthly_lift_gbp": self.estimated_monthly_lift_gbp,
+            "arpu_per_session_gbp": self.arpu_per_session_gbp,
             "conversion_rate_delta": self.conversion_rate_delta,
             "confidence_interval": (
                 list(self.confidence_interval)
@@ -142,6 +155,18 @@ def score_value(
     numeric_tier = _apply_adjustments(base_tier, adjustments_applied, methodology)
     tier_word = methodology["tier_words"][numeric_tier]
 
+    # Friction-volume signal — the PRIMARY commercial unit. Computed from
+    # metrics alone (no ARPU): recoverable sessions are affected sessions
+    # that would complete if the friction were removed.
+    multiplier = float(
+        methodology["commercial_estimate"]["weekly_to_monthly_multiplier"]
+    )
+    recoverable_week = round(
+        metrics.affected_customers_7d * metrics.counterfactual_baseline_pct
+    )
+    recoverable_month = round(recoverable_week * multiplier)
+
+    # Cost scaffold — SECONDARY. £ derived from the friction-volume × ARPU.
     arpu_used, arpu_source = _resolve_arpu(shape, bank_policy)
     monthly_lift = _compute_monthly_lift(metrics, arpu_used, methodology)
 
@@ -154,7 +179,10 @@ def score_value(
         adjustments_applied=tuple(adjustments_applied),
         methodology_version=str(methodology["methodology_version"]),
         inputs_hash=inputs_hash,
+        recoverable_sessions_per_week=recoverable_week,
+        recoverable_sessions_per_month=recoverable_month,
         estimated_monthly_lift_gbp=monthly_lift,
+        arpu_per_session_gbp=arpu_used,
         conversion_rate_delta=metrics.counterfactual_baseline_pct,
         confidence_interval=None,
         arpu_source=arpu_source,

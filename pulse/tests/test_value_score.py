@@ -291,7 +291,7 @@ def test_methodology_version_pinned_in_output() -> None:
     )
     methodology = load_methodology()
     assert score.methodology_version == str(methodology["methodology_version"])
-    assert score.methodology_version == "0.2.0"
+    assert score.methodology_version == "0.3.0"
 
 
 def test_valuescore_as_dict_round_trip() -> None:
@@ -419,6 +419,60 @@ def test_sized_lift_reproducible() -> None:
     b = score_value(shape=_nominal_shape(), metrics=metrics, bank_policy=policy)
     assert a.estimated_monthly_lift_gbp == b.estimated_monthly_lift_gbp
     assert a == b
+
+
+def test_recoverable_sessions_computed_without_arpu() -> None:
+    """Friction-volume is the PRIMARY commercial unit (v0.3) — computed from
+    metrics alone, no ARPU dependency. Always populated when metrics exist."""
+    metrics = ValueMetrics(
+        affected_customers_7d=1000,
+        avg_events_per_affected_user=1.0,
+        vulnerable_cohort_share=0.0,
+        counterfactual_baseline_pct=0.3,
+    )
+    score = score_value(
+        shape=_nominal_shape(), metrics=metrics, bank_policy=_good_bank_policy()
+    )
+    # 1000 × 0.3 = 300 recoverable sessions/week
+    assert score.recoverable_sessions_per_week == 300
+    # 300 × 4.345 ≈ 1304/month
+    assert score.recoverable_sessions_per_month == round(300 * 4.345)
+    # No ARPU configured → £ scaffold is None, but friction volume still there
+    assert score.estimated_monthly_lift_gbp is None
+    assert score.recoverable_sessions_per_week is not None
+
+
+def test_recoverable_sessions_reproducible() -> None:
+    metrics = ValueMetrics(750, 2.0, 0.1, 0.2)
+    a = score_value(shape=_nominal_shape(), metrics=metrics, bank_policy=_good_bank_policy())
+    b = score_value(shape=_nominal_shape(), metrics=metrics, bank_policy=_good_bank_policy())
+    assert a.recoverable_sessions_per_week == b.recoverable_sessions_per_week == 150
+    assert a == b
+
+
+def test_arpu_per_session_exposed_for_scaffold() -> None:
+    """When ARPU is configured, arpu_per_session_gbp is exposed so the
+    renderer can name the assumption in the £ scaffold ("at £X/session")."""
+    policy = _bank_policy_with_arpu({"behavioural_noise": 12.0})
+    score = score_value(
+        shape=_nominal_shape(),
+        metrics=ValueMetrics(100, 1.0, 0.0, 0.2),
+        bank_policy=policy,
+    )
+    assert score.arpu_per_session_gbp == 12.0
+    assert score.estimated_monthly_lift_gbp is not None
+
+
+def test_friction_volume_in_as_dict() -> None:
+    score = score_value(
+        shape=_nominal_shape(),
+        metrics=ValueMetrics(500, 1.0, 0.0, 0.4),
+        bank_policy=_good_bank_policy(),
+    )
+    d = score.as_dict()
+    assert d["recoverable_sessions_per_week"] == 200
+    assert "recoverable_sessions_per_month" in d
+    assert "arpu_per_session_gbp" in d
 
 
 def test_arpu_zero_is_valid_yields_zero_lift() -> None:

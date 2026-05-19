@@ -50,7 +50,7 @@ def test_render_placement_matrix_includes_all_components() -> None:
     assert "LINEAGE:" in html
     assert "Diagnosis v0.1.0" in html
     assert "Risk v0.1.0" in html
-    assert "Value v0.2.0" in html
+    assert "Value v0.3.0" in html
     assert "deploy-scenario-agentic-ai-placement" in html
 
 

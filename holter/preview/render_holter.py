@@ -88,6 +88,11 @@ from holter.preview._shared import (  # noqa: E402
     body_disclosure,
     # SVG
     sparkline_svg,
+    # Commercial signal (friction-volume primary, £ scaffold secondary)
+    friction_volume_value,
+    friction_volume_label,
+    friction_volume_headline,
+    commercial_scaffold,
 )
 
 
@@ -328,19 +333,6 @@ def render_journey_row(packs: list[dict]) -> str:
     )
 
 
-def _format_lift_gbp(amount: float | None) -> str | None:
-    """HOL-56 — Render a £/month figure in a CCO-readable form. None when
-    engine couldn't size it (no ARPU for the journey). Mirrors the format
-    used in render_mlops.py for cross-surface consistency."""
-    if amount is None:
-        return None
-    if amount >= 1_000_000:
-        return f"£{amount / 1_000_000:.1f}m"
-    if amount >= 1_000:
-        return f"£{amount / 1_000:.0f}k"
-    return f"£{amount:.0f}"
-
-
 _COMMERCIAL_TIERS = {"COMMERCIAL-OPPORTUNITY", "SIGNIFICANT"}
 
 
@@ -444,30 +436,31 @@ def render_box1(packs: list[dict]) -> str:
         verdict_synthesis = ("verdict pending — engine scenario not yet wired "
                              "for this selection.")
 
-    # HOL-56 — commercial sizing block. When the engine surfaces a sized
-    # monthly lift (PULSE-107 v0.2) AND the pack carries a commercial-tier
-    # Value classification, promote the £ figure to a primary-KPI block
-    # between ACTION and the governance chip strip. The chip strip still
-    # carries the Value tier for governance traceability, but the £ figure
-    # is what the CCO/COO arrives looking for.
+    # HOL-56 + no-pound-pandora — commercial sizing block. When the pack is
+    # commercial-tier, promote the FRICTION-VOLUME signal (sessions/wk
+    # recoverable) to a primary-KPI block between ACTION and the chip strip.
+    # The £ figure, if the deployment configured ARPU, is a secondary cost
+    # scaffold in the sub-line that names its own per-session assumption —
+    # never the lead stat (raw £ opens the assumption Pandora's box).
     commercial_block = ""
     if cell_score and value_label in {"COMMERCIAL-OPPORTUNITY", "SIGNIFICANT"}:
-        lift_gbp = getattr(cell_score.value, "estimated_monthly_lift_gbp", None)
-        if lift_gbp is not None:
+        volume = friction_volume_value(cell_score.value, period="week")
+        scaffold = commercial_scaffold(cell_score.value)
+        if volume is not None:
+            sub = f"sessions/wk recoverable · {value_label.lower().replace('-', ' ')}"
+            if scaffold:
+                sub += f" · {scaffold}"
             commercial_block = body_primary_kpi(
-                value=_format_lift_gbp(lift_gbp),
-                label="ESTIMATED MONTHLY LIFT",
-                sub=f"at observed conversion rates · {value_label.lower().replace('-', ' ')}",
+                value=f"{volume} /wk",
+                label="RECOVERABLE FRICTION VOLUME",
+                sub=sub,
                 color=_VALUE_COLORS.get(value_label, "var(--blue)"),
             )
         else:
-            # Value tier is commercial but ARPU not configured — render a
-            # placeholder so the box reflects the engine's prioritisation
-            # signal even when sized output is missing.
             commercial_block = body_primary_kpi(
                 value=value_label,
                 label="VALUE TIER",
-                sub="sized lift pending — bank_policy ARPU not configured for this journey",
+                sub="friction volume pending — engine scenario not wired for this pack",
                 color=_VALUE_COLORS.get(value_label, "var(--blue)"),
             )
 
@@ -648,37 +641,42 @@ def render_box3(packs: list[dict]) -> str:
     else:
         cohort_over = "—"
 
-    # HOL-56 — Box 3 KPI swap. When the engine has classified the pack as a
-    # commercial-tier (COMMERCIAL-OPPORTUNITY or SIGNIFICANT) AND surfaces a
-    # sized monthly lift (PULSE-107 v0.2), the headline becomes commercial-
-    # at-stake instead of operational "affected sessions today." Operational
-    # stat moves to the disclosure detail. NOMINAL/WATCH packs keep their
-    # operational KPI — sized lift on those is trivially small and would
-    # weaken the framing rather than strengthen it.
+    # HOL-56 + no-pound-pandora — Box 3 KPI swap. When the pack is
+    # commercial-tier, the headline leads with the FRICTION-VOLUME signal
+    # (sessions/wk recoverable) — the unit a product team can act on and the
+    # customer's own outcome currency. The £ figure, if ARPU is configured,
+    # rides in the delta line as a named-assumption cost scaffold — never the
+    # lead stat (Meadows: the user can't act on £; they fix the friction;
+    # Cagan: PMs ship against sessions, not £/mo).
     is_commercial_pack = (
         cell_score is not None
         and cell_score.value.tier in _COMMERCIAL_TIERS
     )
-    sized_lift = (
-        getattr(cell_score.value, "estimated_monthly_lift_gbp", None)
+    recoverable_wk = (
+        getattr(cell_score.value, "recoverable_sessions_per_week", None)
         if is_commercial_pack else None
     )
-    has_commercial = sized_lift is not None
+    has_commercial = recoverable_wk is not None
 
     if has_commercial:
         commercial_color = _VALUE_COLORS.get(cell_score.value.tier, "var(--green)")
+        scaffold = commercial_scaffold(cell_score.value)
+        volume_val = friction_volume_value(cell_score.value, period="week")
+        delta_line = f"{cell_score.value.tier} · conv-rate delta {cell_score.value.conversion_rate_delta:.0%}"
+        if scaffold:
+            delta_line += f" · {scaffold}"
         headline_card = headline_stat_card(
-            label="ESTIMATED MONTHLY LIFT · AT STAKE",
-            value=_format_lift_gbp(sized_lift) + "/mo",
-            delta=f"{cell_score.value.tier} · conv-rate delta {cell_score.value.conversion_rate_delta:.0%}",
+            label="RECOVERABLE FRICTION VOLUME",
+            value=f"{volume_val} /wk",
+            delta=delta_line,
             traj=f"{delta_dir} {delta_abs:+d} sessions/wk · friction widening" if delta_abs > 0 else f"{delta_dir} EASING",
             meta_left=f"30-day affected: {total_30d:,} sessions",
             meta_right=NOW,
             progress_pct=int(100 * today_n / peak_day) if peak_day else 0,
         )
         what_this_tells_us = (
-            "<strong>What this tells us:</strong> sized lift at observed "
-            "conversion rates; drill V3 for cohort cuts &amp; journey replay"
+            "<strong>What this tells us:</strong> sessions recoverable if the "
+            "friction is removed; drill V3 for cohort cuts &amp; journey replay"
         )
         primary_kpi_block = body_primary_kpi(
             value=f"{today_n}",

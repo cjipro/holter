@@ -163,6 +163,80 @@ def get_pack_cell(pack_name: str):
     return _build_pack_cell_index().get(pack_name)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Commercial signal — friction-volume PRIMARY, £ scaffold SECONDARY.
+#
+# Single source of truth for how every surface renders the commercial signal.
+# The rule (see no-pound-pandora): lead with friction-volume (sessions/week,
+# the bank's own outcome vocabulary); show £ only as a derived scaffold that
+# names its own cost-per-unit assumption. Raw £ as a primary stat is forbidden
+# — it opens the assumption Pandora's box (ARPU / baseline scrutiny) and forces
+# money-first framing on a customer-experience signal.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _format_count(n: int) -> str:
+    """Compact count: 1234 → '1.2k', 980 → '980'."""
+    if n >= 1_000_000:
+        return f"{n / 1_000_000:.1f}m"
+    if n >= 1_000:
+        return f"{n / 1_000:.1f}k"
+    return str(n)
+
+
+def _format_gbp(amount: float) -> str:
+    """Compact £: 72000 → '£72k', 1_400_000 → '£1.4m'."""
+    if amount >= 1_000_000:
+        return f"£{amount / 1_000_000:.1f}m"
+    if amount >= 1_000:
+        return f"£{amount / 1_000:.0f}k"
+    return f"£{amount:.0f}"
+
+
+def friction_volume_value(value_score: Any, period: str = "week") -> str | None:
+    """PRIMARY commercial unit — recoverable sessions per week/month.
+
+    Returns a bare value string (e.g. '~300', '~1.3k') for use as a headline
+    stat value, or None when the engine couldn't compute it. Always available
+    when metrics exist (no ARPU dependency)."""
+    attr = (
+        "recoverable_sessions_per_week" if period == "week"
+        else "recoverable_sessions_per_month"
+    )
+    n = getattr(value_score, attr, None)
+    if n is None:
+        return None
+    return f"~{_format_count(int(n))}"
+
+
+def friction_volume_label(period: str = "week") -> str:
+    """The unit label paired with friction_volume_value."""
+    return "SESSIONS/WK RECOVERABLE" if period == "week" else "SESSIONS/MO RECOVERABLE"
+
+
+def friction_volume_headline(value_score: Any, period: str = "week") -> str | None:
+    """PRIMARY commercial unit as a self-contained phrase, e.g.
+    '~300 sessions/wk recoverable'. None when not computable."""
+    val = friction_volume_value(value_score, period)
+    if val is None:
+        return None
+    unit = "sessions/wk" if period == "week" else "sessions/mo"
+    return f"{val} {unit} recoverable"
+
+
+def commercial_scaffold(value_score: Any) -> str | None:
+    """SECONDARY cost framing — derived from friction-volume × ARPU, with the
+    per-session ARPU assumption named explicitly so the reader sees the
+    assumption, not just the conclusion. Returns None when the deployment
+    has not configured ARPU for the journey (then surfaces show friction
+    volume only — never a bare £)."""
+    lift = getattr(value_score, "estimated_monthly_lift_gbp", None)
+    arpu = getattr(value_score, "arpu_per_session_gbp", None)
+    if lift is None or arpu is None:
+        return None
+    return f"≈ {_format_gbp(lift)}/mo at £{arpu:.0f}/session"
+
+
 def _extract_quote(pack: dict) -> str:
     """Pull a quotable sentence from a pack's bank_md.
 
