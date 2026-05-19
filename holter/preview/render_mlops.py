@@ -418,6 +418,31 @@ CSS_EXTRA = """
   font-family: var(--mono); font-weight: 800;
   letter-spacing: 1.4px; color: var(--red);
 }
+
+/* HOL-39 — drill-through coupling: clicking a cell-id link highlights
+   every matching cell-row across all 4 panes simultaneously. */
+.cell-link {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px dotted currentColor;
+  cursor: pointer;
+}
+.cell-link:hover { color: var(--blue); }
+.cell-row {
+  transition: background 120ms ease, box-shadow 120ms ease;
+  border-radius: 2px;
+  padding-left: 4px; margin-left: -4px;
+}
+.cell-row-highlighted {
+  background: rgba(0, 183, 245, 0.12);
+  box-shadow: inset 3px 0 0 var(--blue);
+}
+.govern-table tr.cell-row-highlighted td {
+  background: rgba(0, 183, 245, 0.12);
+}
+.govern-table tr.cell-row-highlighted td:first-child {
+  box-shadow: inset 3px 0 0 var(--blue);
+}
 """
 
 
@@ -473,9 +498,12 @@ def render_drift_pane(packs: list[dict]) -> str:
             cohort_series_list, _COHORT_COLORS,
             width=240, height=28, baseline=baseline_30d,
         )
+        # HOL-39: cell-id is now a click-target; row carries data-cell-id
         drift_rows.append(
-            f'<div class="drift-cell">'
-            f'<span class="drift-cell-label">cell {cell} · {sig}</span>'
+            f'<div class="drift-cell cell-row" data-cell-id="{cell}">'
+            f'<span class="drift-cell-label">'
+            f'<a class="cell-link" href="#cell-{cell}" data-cell-id="{cell}">cell {cell}</a>'
+            f' · {sig}</span>'
             f'<span class="drift-cell-spark">{spark}</span>'
             f'<span class="drift-cell-val" style="color:{color};">'
             f'{delta:+d}pp</span>'
@@ -573,9 +601,12 @@ def render_lineage_pane(packs: list[dict]) -> str:
         h = p["hypothesis"] or {}
         cell = _e(str(h.get("cell_id", "?")))
         sha_short = _e(short_hash(p["sha256"]))
+        # HOL-39: cell-id is a click-target; row carries data-cell-id
         detail_rows.append(
-            f'<div class="drift-cell">'
-            f'<span class="drift-cell-label">cell {cell} · sha:{sha_short}</span>'
+            f'<div class="drift-cell cell-row" data-cell-id="{cell}">'
+            f'<span class="drift-cell-label">'
+            f'<a class="cell-link" href="#cell-{cell}" data-cell-id="{cell}">cell {cell}</a>'
+            f' · sha:{sha_short}</span>'
             f'<span class="govern-badge" style="color:{ls["color"]};">'
             f'{ls["chain_status"]}</span>'
             f'<span class="drift-cell-val" style="color:var(--text-3); width:auto; '
@@ -624,9 +655,10 @@ def render_synthesis_pane(packs: list[dict]) -> str:
     for p, g in rows[:6]:
         h = p["hypothesis"] or {}
         cell = _e(str(h.get("cell_id", "?")))
+        # HOL-39: row carries data-cell-id; cell column is the click-target
         table_rows.append(
-            f'<tr>'
-            f'<td>cell {cell}</td>'
+            f'<tr class="cell-row" data-cell-id="{cell}">'
+            f'<td><a class="cell-link" href="#cell-{cell}" data-cell-id="{cell}">cell {cell}</a></td>'
             f'<td><span class="govern-badge" style="color:{g["mode_color"]};">'
             f'{g["synthesis_mode"]}</span></td>'
             f'<td><span class="govern-badge" style="color:{g["att_color"]};">'
@@ -735,6 +767,38 @@ def render_page() -> str:
 {render_masthead()}
 <div class="mlops-grid">{panes}</div>
 </main>
+<script>
+// HOL-39 — drill-through coupling: clicking a cell-id link toggles
+// .cell-row-highlighted on EVERY .cell-row[data-cell-id="N"] across all
+// 4 panes simultaneously. Vanilla JS, no library, ~15 lines.
+(function () {{
+  function clearAll() {{
+    document.querySelectorAll('.cell-row-highlighted')
+      .forEach(el => el.classList.remove('cell-row-highlighted'));
+  }}
+  function highlight(cellId) {{
+    document.querySelectorAll('.cell-row[data-cell-id="' + cellId + '"]')
+      .forEach(el => el.classList.add('cell-row-highlighted'));
+  }}
+  document.querySelectorAll('.cell-link').forEach(link => {{
+    link.addEventListener('click', function (ev) {{
+      ev.preventDefault();
+      const cellId = this.getAttribute('data-cell-id');
+      const wasHighlighted = document.querySelector(
+        '.cell-row.cell-row-highlighted[data-cell-id="' + cellId + '"]'
+      );
+      clearAll();
+      if (!wasHighlighted) highlight(cellId);
+    }});
+  }});
+  // Click anywhere else clears highlight
+  document.addEventListener('click', function (ev) {{
+    if (!ev.target.closest('.cell-link') && !ev.target.closest('.cell-row')) {{
+      clearAll();
+    }}
+  }});
+}})();
+</script>
 </body>
 </html>
 """
