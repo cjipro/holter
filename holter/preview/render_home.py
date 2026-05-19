@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import datetime as _dt
 import sys
+from html import escape as _e
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -759,8 +760,12 @@ def render_hero(top_signal: dict) -> str:
     cs   = top_signal["cell_score"]
     tier = cs.action_tier
     color = _ACTION_COLORS.get(tier, "var(--amber)")
-    journey = cs.journey_id.replace("_", " · ")
-    signature = cs.signature_id.replace("_", " ")
+    # PR-panel fix (Torvalds + van Rossum): all engine free-text gets
+    # html.escape() at the interpolation boundary before f-stringing into
+    # the DOM. The engine doesn't return markup today, but this is a
+    # defensive boundary — don't trust ANY engine string in the renderer.
+    journey = _e(cs.journey_id.replace("_", " · "))
+    signature = _e(cs.signature_id.replace("_", " "))
     # Headline reads as news. Diagnosis becomes the "why" prefix.
     _DIAG_PREFIX = {
         "SUPPORT_PROBLEM": "Support gap detected",
@@ -774,17 +779,19 @@ def render_hero(top_signal: dict) -> str:
     # falling back to engine recommendation if no template matches.
     varied_summary = summary_for(cs.signature_id, cs.diagnosis.diagnosis,
                                   pack["meta"]["pack_name"])
+    # Templates are author-controlled (safe); placement_recommendation is
+    # engine-controlled (escape).
     summary = (
         f'<strong>Signature:</strong> {signature}. '
-        f'{varied_summary or cs.placement_recommendation}'
+        f'{varied_summary or _e(cs.placement_recommendation)}'
     )
     # HOL-25 — slug breadcrumb killed. Provenance moves to a hover-tooltip
     # on the INVESTIGATE → CTA so a curious reader can still verify lineage.
     sha = short_hash(pack["sha256"])
-    provenance_tooltip = (
+    provenance_tooltip = _e(
         f"pack: {pack['meta']['pack_name']} · sha256:{sha} · "
         f"verdict v0 · DuckDB-backed (PULSE)"
-    ).replace('"', "&quot;")
+    , quote=True)
     # HOL-24 — delta meta: confidence chip + time-since-surfaced + tier-change + click preview
     delta = card_delta(pack["meta"]["pack_name"])
     preview_text = f"{delta['n_findings']} sub-findings · open in Workspace"
@@ -890,11 +897,13 @@ def render_flagged_feed(flagged: list[dict], hero: dict) -> str:
         cs = sig["cell_score"]
         tier = cs.action_tier
         accent = _ACTION_COLORS.get(tier, "var(--amber)")
-        journey = cs.journey_id.replace("_", " · ").title()
-        signature = cs.signature_id.replace("_", " ")
+        # PR-panel fix: escape engine free-text at the boundary.
+        journey = _e(cs.journey_id.replace("_", " · ").title())
+        signature = _e(cs.signature_id.replace("_", " "))
         varied = summary_for(cs.signature_id, cs.diagnosis.diagnosis,
                               pack["meta"]["pack_name"])
-        summary = varied or cs.placement_recommendation
+        # Templates are author-controlled (safe); recommendation is engine-controlled.
+        summary = varied if varied else _e(cs.placement_recommendation)
         if len(summary) > 180:
             summary = summary[:177] + "…"
         preview = f"{delta['n_findings']} sub-findings"

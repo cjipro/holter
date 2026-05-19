@@ -36,6 +36,7 @@ import datetime as _dt
 import functools
 import hashlib
 import sys
+from html import escape as _e
 from pathlib import Path
 from typing import Any
 
@@ -1061,9 +1062,17 @@ def headline_tier_badge(tier: str, color: str, context: str) -> str:
 
 
 def body_evidence_cards(quotes: list[tuple[str, str]]) -> str:
+    """Render evidence cards. Input contract: both tuple members must be
+    pre-escaped HTML-safe strings (callers use `_e()` from html.escape).
+
+    PR-panel fix: previous version did `q[0].replace(chr(34), chr(39))` as
+    a half-measure for the data-tooltip attribute. Now that callers escape
+    at the boundary (with quote=True), `"` is already `&quot;` and the
+    replace is a no-op. Removed for clarity.
+    """
     return "".join(
         f'<div class="body-evidence-card">'
-        f'<div class="body-evidence-quote" data-tooltip="{q[0].replace(chr(34), chr(39))}">{q[0]}</div>'
+        f'<div class="body-evidence-quote" data-tooltip="{q[0]}">{q[0]}</div>'
         f'<div class="body-evidence-attr">{q[1]}</div>'
         f'</div>'
         for q in quotes
@@ -1364,14 +1373,21 @@ def render_filter_strip(packs: list[dict]) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _extract_quote(pack: dict) -> str:
-    """Pull a quotable sentence from a pack's bank_md."""
+    """Pull a quotable sentence from a pack's bank_md.
+
+    Returns HTML-escaped text — callers can safely f-string the result
+    into a `data-tooltip` attribute OR a body text node without further
+    escaping. PR-panel fix (Torvalds + van Rossum): bank_md is free
+    text from authored markdown and could contain `<`, `&`, etc.
+    """
     raw = pack.get("bank_md", "")
     cleaned = " ".join(
         ln.strip().lstrip("#").strip()
         for ln in raw.split("\n")
         if ln.strip() and not ln.startswith("```")
     )
-    return cleaned[:280] + ("…" if len(cleaned) > 280 else "")
+    truncated = cleaned[:280] + ("…" if len(cleaned) > 280 else "")
+    return _e(truncated, quote=True)
 
 
 def render_ticker(packs: list[dict]) -> str:
@@ -1460,8 +1476,11 @@ def render_box1(packs: list[dict]) -> str:
     if cell_score:
         tier = cell_score.action_tier
         tier_color = _ACTION_COLORS.get(tier, "var(--amber)")
-        recommendation = cell_score.placement_recommendation
-        breadcrumb = cell_score.journey_id.replace("_", " · ")
+        # PR-panel fix: escape engine free-text (recommendation) at boundary.
+        # Identifiers (journey_id, signature_id, tier strings) are constrained
+        # by engine schema to safe charsets, but escape defensively anyway.
+        recommendation = _e(cell_score.placement_recommendation)
+        breadcrumb = _e(cell_score.journey_id.replace("_", " · "))
         # cell_score.{diagnosis,value,risk} are objects; pull the string tier off each
         diagnosis_label = cell_score.diagnosis.diagnosis
         value_label     = cell_score.value.tier
@@ -1594,8 +1613,9 @@ def render_box2(packs: list[dict]) -> str:
     # Pre-baked results for the default pack (stub — real run = engine-side)
     h = default_pack["hypothesis"] or {}
     is_neg = h.get("ground_truth_expectation") == "negative"
-    method = (h.get("analytic") or {}).get("method", "—")
-    statement = (default_pack["meta"].get("description") or "").strip().split("\n")[0]
+    method = _e((h.get("analytic") or {}).get("method", "—"))
+    # PR-panel fix: pack descriptions are free text from authored YAML — escape.
+    statement = _e((default_pack["meta"].get("description") or "").strip().split("\n")[0])
     cohort_axes = h.get("cohort_axes", [])
     evidence = h.get("evidence_required", [])
 
@@ -1914,10 +1934,11 @@ def _dist_box(packs: list[dict], *, name: str, attr_path: tuple[str, str],
     evidence = []
     for p, cs in dominant_packs[:2]:
         h = p["hypothesis"] or {}
+        # PR-panel fix: escape pack_name + description (engine free-text)
+        desc = (p["meta"].get("description", "").strip().replace(chr(10), " "))[:180]
         evidence.append((
-            f"{p['meta']['pack_name']} → {dominant}. "
-            f"{(p['meta'].get('description', '').strip().replace(chr(10), ' '))[:180]}",
-            f"Cell {h.get('cell_id','?')} · {dominant}",
+            f"{_e(p['meta']['pack_name'])} → {_e(dominant)}. {_e(desc)}",
+            f"Cell {_e(str(h.get('cell_id','?')))} · {_e(dominant)}",
         ))
     return render_box(
         header=box_header(f"{name} DISTRIBUTION", f"v{methodology_version}"),
@@ -2041,10 +2062,14 @@ def render_box_commentary_for_journey(packs: list[dict], journey_prefix: str,
     evidence: list[tuple[str, str]] = []
     for p in journey_packs[:2]:
         h = p["hypothesis"] or {}
+        # _extract_quote() is pre-escaped; description fallback + signature_id are not
+        quote = _extract_quote(p) or _e(
+            (p["meta"].get("description", "").strip().replace("\n", " "))[:200]
+        )
         evidence.append((
-            _extract_quote(p) or
-            (p["meta"].get("description", "").strip().replace("\n", " "))[:200],
-            f"Cell {h.get('cell_id','?')} · {h.get('signature_id','—').replace('_',' ')}",
+            quote,
+            f"Cell {_e(str(h.get('cell_id','?')))} · "
+            f"{_e(h.get('signature_id','—').replace('_',' '))}",
         ))
     return render_box(
         header=box_header(f"COMMENTARY · {display_name}", f"{len(journey_packs)} packs"),
