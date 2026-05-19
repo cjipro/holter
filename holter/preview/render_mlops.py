@@ -75,6 +75,47 @@ NOW = _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 # once those contracts are wired. Deterministic per pack-name hash.
 # ─────────────────────────────────────────────────────────────────────────────
 
+def drift_series_n(pack_name: str, n: int) -> list[int]:
+    """Stub N-day detection-rate series. HOL-43 — variable length so the
+    window scrubber can swap [7d][14d][30d] without re-fetching."""
+    h = sum(ord(c) for c in pack_name)
+    baseline = 40 + (h % 30)
+    return [baseline + ((h + i * 5) % 19) - 9 for i in range(n)]
+
+
+def cohort_drift_series_n(pack_name: str, cohort: str, n: int) -> list[int]:
+    """HOL-43 — variable-length cohort series; mirrors cohort_drift_series."""
+    h = sum(ord(c) for c in pack_name) + sum(ord(c) for c in cohort)
+    baseline = 40 + (h % 30)
+    swing = (h % 12) - 6
+    return [baseline + ((h + i * (3 + cohort.count("-"))) % 19) - 9 + swing
+            for i in range(n)]
+
+
+def lineage_chain_ancestry(pack_name: str, sha: str) -> list[dict]:
+    """HOL-43 — stub upstream ancestry chain for a pack's lineage hash.
+    Closes O'Neil's 'hash is a string not a link' + Banin's 'no upstream
+    pointer' R2 critique. Engine returns this via pulse.lineage in prod."""
+    h = sum(ord(c) for c in pack_name)
+    depth = 4 + (h % 3)
+    pipelines = [
+        "frictionbench.scoring", "convergence.cohort_split",
+        "lineage.anchor_sealer", "pulse.synthesis.deterministic",
+        "telemetry.taq_adapter", "schema.canonical_v2",
+    ]
+    chain = []
+    for i in range(depth):
+        ph = (h * 31 + i * 17) % 0xFFFFFFFF
+        ds_suffix = (5 - i + (h % 4)) % 5 + 1
+        chain.append({
+            "sha":       f"sha-{ph:08x}_{(ph >> 4) & 0xFFFF:04x}",
+            "pipeline":  pipelines[(h + i) % len(pipelines)],
+            "dataset":   f"taq.session_2026{ds_suffix:02d}",
+            "sealed_at": f"2026-05-{(19 - i * 3) % 28 + 1:02d}",
+        })
+    return chain
+
+
 def drift_series(pack_name: str) -> list[int]:
     """Stub 14-day detection-rate series. Engine returns this via
     pulse.frictionbench.scoring once the contract is wired."""
@@ -106,7 +147,8 @@ def cohort_drift_series(pack_name: str, cohort: str) -> list[int]:
 def multi_sparkline_svg(series_list: list[list[float]], colors: list[str],
                         width: int = 200, height: int = 36,
                         baseline: float | None = None,
-                        baseline_color: str = "rgba(180,200,210,0.4)") -> str:
+                        baseline_color: str = "rgba(180,200,210,0.4)",
+                        labels: list[str] | None = None) -> str:
     """Multi-series sparkline — N overlaid trend lines + optional baseline.
 
     HOL-41: replaces the single-series sparkline_svg in DRIFT pane to surface
@@ -128,13 +170,17 @@ def multi_sparkline_svg(series_list: list[list[float]], colors: list[str],
     step = width / max(n - 1, 1)
 
     polylines = []
-    for series, color in zip(series_list, colors):
+    # HOL-43 — tag each polyline with data-cohort so the legend can solo on
+    # hover (CSS-only dim of other lines)
+    cohort_labels = labels or [""] * len(series_list)
+    for series, color, label in zip(series_list, colors, cohort_labels):
         pts = " ".join(
             f"{i*step:.1f},{height - ((v - vmin) / span) * height:.1f}"
             for i, v in enumerate(series)
         )
         polylines.append(
-            f'<polyline points="{pts}" fill="none" '
+            f'<polyline class="ms-line" data-cohort="{label}" '
+            f'points="{pts}" fill="none" '
             f'stroke="{color}" stroke-width="1.4" opacity="0.85"/>'
         )
 
@@ -146,11 +192,33 @@ def multi_sparkline_svg(series_list: list[list[float]], colors: list[str],
             f'stroke="{baseline_color}" stroke-width="1" stroke-dasharray="2,3"/>'
         )
 
+    # HOL-43 — invisible day-overlay rectangles carry <title> tooltips
+    # showing per-day per-cohort values. Native browser tooltip; zero JS.
+    day_rects = []
+    if cohort_labels and labels:
+        for i in range(n):
+            day = n - i  # day_N = 1 is "today"
+            x = max(0, i * step - step / 2)
+            w = step
+            tooltip_lines = [f"day -{n - 1 - i} (D{n - i})"]
+            for series, label in zip(series_list, cohort_labels):
+                if i < len(series):
+                    tooltip_lines.append(f"{label}: {series[i]:.0f}")
+            tooltip = " · ".join(tooltip_lines)
+            day_rects.append(
+                f'<rect class="ms-day" x="{x:.1f}" y="0" '
+                f'width="{w:.1f}" height="{height}" '
+                f'fill="transparent">'
+                f'<title>{tooltip}</title>'
+                f'</rect>'
+            )
+
     return (
         f'<svg class="body-sparkline" viewBox="0 0 {width} {height}" '
         f'width="100%" height="{height}" preserveAspectRatio="none">'
         f'{baseline_svg}'
         f'{"".join(polylines)}'
+        f'{"".join(day_rects)}'
         f'</svg>'
     )
 
@@ -519,6 +587,94 @@ CSS_EXTRA = """
   color: var(--text-2);
 }
 .govern-session-log-count { color: var(--blue); font-weight: 800; }
+
+/* HOL-43 — Interrogable sparkline + lineage hash links + window scrubber.
+   Victor/Hubbard/Banin/O'Neil R2 ask: the surface lets you reach into
+   the data. Three affordances, one gesture. */
+
+/* (b) Window scrubber [7d][14d][30d] above DRIFT sparklines */
+.window-scrubber {
+  display: inline-flex; gap: 4px; align-items: center;
+  margin-left: auto;
+  font-family: var(--mono); font-size: 9px;
+}
+.window-scrubber-label { color: var(--text-3); letter-spacing: 0.6px;
+                         text-transform: uppercase; }
+.window-scrubber-btn {
+  font-family: var(--mono); font-size: 9px; font-weight: 700;
+  letter-spacing: 0.6px;
+  padding: 1px 6px;
+  background: transparent;
+  color: var(--text-3);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all 100ms ease;
+}
+.window-scrubber-btn:hover { color: var(--text); border-color: var(--text-2); }
+.window-scrubber-btn[data-active="true"] {
+  background: rgba(0, 183, 245, 0.15);
+  color: var(--blue); border-color: var(--blue);
+}
+
+/* SVG window switching: show one, hide the other two */
+.drift-cell-spark svg[data-window] { display: none; }
+body:not([data-window]) .drift-cell-spark svg[data-window="14d"],
+body[data-window="7d"]  .drift-cell-spark svg[data-window="7d"],
+body[data-window="14d"] .drift-cell-spark svg[data-window="14d"],
+body[data-window="30d"] .drift-cell-spark svg[data-window="30d"] {
+  display: block;
+}
+
+/* Day-stamp legend below the scrubber */
+.drift-window-stamp { color: var(--text-3); font-family: var(--mono);
+                      font-size: 9px; letter-spacing: 0.6px;
+                      margin-left: 8px; }
+
+/* (a) Cohort solo — hovering legend swatch dims other lines */
+.drift-legend-swatch[data-cohort] { cursor: pointer; }
+.drift-cell-spark svg .ms-line { transition: opacity 120ms ease; }
+.drift-legend:hover .drift-legend-swatch:not(:hover) { opacity: 0.4; }
+.drift-legend:has(.drift-legend-swatch[data-cohort="18-24"]:hover)
+  ~ .drift-cell .drift-cell-spark svg .ms-line:not([data-cohort="18-24"]) {
+  opacity: 0.15;
+}
+.drift-legend:has(.drift-legend-swatch[data-cohort="25-54"]:hover)
+  ~ .drift-cell .drift-cell-spark svg .ms-line:not([data-cohort="25-54"]) {
+  opacity: 0.15;
+}
+.drift-legend:has(.drift-legend-swatch[data-cohort="55+"]:hover)
+  ~ .drift-cell .drift-cell-spark svg .ms-line:not([data-cohort="55+"]) {
+  opacity: 0.15;
+}
+
+/* (c) Lineage hash-as-link + click-to-expand chain */
+.hash-link {
+  color: var(--text-2);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--text-3);
+  cursor: pointer;
+}
+.hash-link:hover { color: var(--blue); border-bottom-color: var(--blue); }
+.hash-chain {
+  display: none;
+  margin: 4px 0 8px 18px;
+  padding: 6px 10px;
+  background: var(--card-2);
+  border-left: 2px solid var(--blue);
+  font-family: var(--mono); font-size: 9px;
+  color: var(--text-2);
+}
+.hash-chain--open { display: block; }
+.hash-chain-row { display: flex; gap: 10px; padding: 1px 0;
+                  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hash-chain-sha { color: var(--text-2); flex: 0 0 145px; }
+.hash-chain-pipeline { color: var(--blue); flex: 0 0 170px; }
+.hash-chain-dataset { color: var(--text-3); flex: 1 1 auto; }
+.hash-chain-date { color: var(--text-3); flex: 0 0 75px;
+                   text-align: right; }
+.hash-chain-arrow { color: var(--text-3); opacity: 0.6;
+                    padding: 1px 0 3px 0; }
 """
 
 
@@ -530,13 +686,23 @@ def render_drift_pane(packs: list[dict]) -> str:
     """Pane 1 — DRIFT MONITORS. Per-cell COHORT-DISAGGREGATED sparklines
     (HOL-41) — multiple lines per row showing each age-band's trend so
     O'Neil's single-subgroup-bleeding case is visible at a glance."""
-    # HOL-41 cohort legend (top of body)
+    # HOL-41 cohort legend (top of body) + HOL-43 cohort-solo data-cohort attr
     legend_swatches = "".join(
-        f'<span class="drift-legend-swatch">'
+        f'<span class="drift-legend-swatch" data-cohort="{_e(label)}">'
         f'<span class="drift-legend-dot" style="background:{c};"></span>'
         f'<span>{_e(label)}</span>'
         f'</span>'
         for label, c in zip(_COHORT_LABELS, _COHORT_COLORS)
+    )
+    # HOL-43 — window scrubber + cohort legend share the top strip
+    scrubber_html = (
+        f'<div class="window-scrubber">'
+        f'<span class="window-scrubber-label">window</span>'
+        f'<button class="window-scrubber-btn" data-window="7d" type="button">7d</button>'
+        f'<button class="window-scrubber-btn" data-window="14d" type="button" '
+        f'data-active="true">14d</button>'
+        f'<button class="window-scrubber-btn" data-window="30d" type="button">30d</button>'
+        f'</div>'
     )
     legend_html = (
         f'<div class="drift-legend">'
@@ -546,6 +712,7 @@ def render_drift_pane(packs: list[dict]) -> str:
         f'<span class="drift-legend-baseline-line"></span>'
         f'<span>30-day baseline</span>'
         f'</span>'
+        f'{scrubber_html}'
         f'</div>'
     )
 
@@ -564,16 +731,29 @@ def render_drift_pane(packs: list[dict]) -> str:
         h = p["hypothesis"] or {}
         cell = _e(str(h.get("cell_id", "?")))
         sig = _e(h.get("signature_id", "—").replace("_", " "))
-        # HOL-41: per-cohort 14-day series + cell-aggregated baseline
-        cohort_series_list = [
-            cohort_drift_series(p["meta"]["pack_name"], cohort)
-            for cohort in _COHORT_LABELS
-        ]
+        # HOL-41: per-cohort series + cell-aggregated baseline
+        # HOL-43: render 3 windows ([7d][14d][30d]); CSS toggles which
+        # is visible based on body[data-window]. Default 14d.
         baseline_30d = sum(cell_series) / len(cell_series)
-        spark = multi_sparkline_svg(
-            cohort_series_list, _COHORT_COLORS,
-            width=240, height=28, baseline=baseline_30d,
-        )
+        spark_parts = []
+        for win_n, win_label in [(7, "7d"), (14, "14d"), (30, "30d")]:
+            cs_list = [
+                cohort_drift_series_n(p["meta"]["pack_name"], cohort, win_n)
+                for cohort in _COHORT_LABELS
+            ]
+            svg = multi_sparkline_svg(
+                cs_list, _COHORT_COLORS,
+                width=240, height=28, baseline=baseline_30d,
+                labels=_COHORT_LABELS,
+            )
+            # Inject the data-window attribute into the SVG root tag
+            svg_tagged = svg.replace(
+                '<svg class="body-sparkline"',
+                f'<svg class="body-sparkline" data-window="{win_label}"',
+                1,
+            )
+            spark_parts.append(svg_tagged)
+        spark = "".join(spark_parts)
         # HOL-39: cell-id is now a click-target; row carries data-cell-id
         drift_rows.append(
             f'<div class="drift-cell cell-row" data-cell-id="{cell}">'
@@ -678,16 +858,39 @@ def render_lineage_pane(packs: list[dict]) -> str:
         cell = _e(str(h.get("cell_id", "?")))
         sha_short = _e(short_hash(p["sha256"]))
         # HOL-39: cell-id is a click-target; row carries data-cell-id
+        # HOL-43: hash is a click-target; expands chain ancestry inline
+        ancestry = lineage_chain_ancestry(p["meta"]["pack_name"], p["sha256"])
+        chain_rows = []
+        for i, anc in enumerate(ancestry):
+            arrow = ('<span class="hash-chain-arrow">↑ parent</span>'
+                     if i < len(ancestry) - 1 else
+                     '<span class="hash-chain-arrow">root</span>')
+            chain_rows.append(
+                f'<div class="hash-chain-row">'
+                f'<span class="hash-chain-sha">{_e(anc["sha"])}</span>'
+                f'<span class="hash-chain-pipeline">{_e(anc["pipeline"])}</span>'
+                f'<span class="hash-chain-dataset">{_e(anc["dataset"])}</span>'
+                f'<span class="hash-chain-date">{_e(anc["sealed_at"])}</span>'
+                f'</div>'
+                f'<div class="hash-chain-row">{arrow}</div>'
+            )
+        chain_html = (
+            f'<div class="hash-chain" data-chain-for="{cell}">'
+            f'{"".join(chain_rows)}'
+            f'</div>'
+        )
         detail_rows.append(
             f'<div class="drift-cell cell-row" data-cell-id="{cell}">'
             f'<span class="drift-cell-label">'
             f'<a class="cell-link" href="#cell-{cell}" data-cell-id="{cell}">cell {cell}</a>'
-            f' · sha:{sha_short}</span>'
+            f' · <a class="hash-link" href="#" data-chain-toggle="{cell}" '
+            f'title="Expand upstream chain">sha:{sha_short}</a></span>'
             f'<span class="govern-badge" style="color:{ls["color"]};">'
             f'{ls["chain_status"]}</span>'
             f'<span class="drift-cell-val" style="color:var(--text-3); width:auto; '
             f'text-align:right; font-size:9px;">depth {ls["chain_depth"]}</span>'
             f'</div>'
+            f'{chain_html}'
         )
 
     return render_box(
@@ -972,6 +1175,39 @@ window.holterEventLog = window.holterEventLog || [];
       recordAction(cellId, action, reason);
       resolveRow(cellId, action);
       updateSessionLog();
+    }});
+  }});
+}})();
+
+// HOL-43 — Window scrubber [7d][14d][30d] + lineage hash click-to-expand
+// chain ancestry. Three affordances, one gesture (reach into the data).
+(function () {{
+  // (b) Window scrubber: sets body[data-window]; CSS hides/shows the
+  // matching sparkline SVG variant. Default 14d.
+  document.body.setAttribute('data-window', '14d');
+  document.querySelectorAll('.window-scrubber-btn').forEach(btn => {{
+    btn.addEventListener('click', function (ev) {{
+      ev.preventDefault();
+      const win = this.getAttribute('data-window');
+      document.body.setAttribute('data-window', win);
+      document.querySelectorAll('.window-scrubber-btn').forEach(b =>
+        b.setAttribute('data-active', b === this ? 'true' : 'false')
+      );
+    }});
+  }});
+
+  // (c) Hash click-to-expand: toggles .hash-chain--open on the matching
+  // chain block. Cell-id key avoids opening the wrong chain in cases
+  // where two rows somehow share a cell.
+  document.querySelectorAll('a.hash-link[data-chain-toggle]').forEach(link => {{
+    link.addEventListener('click', function (ev) {{
+      ev.preventDefault();
+      ev.stopPropagation();
+      const cellId = this.getAttribute('data-chain-toggle');
+      const chain = this.closest('.holter-box').querySelector(
+        '.hash-chain[data-chain-for="' + cellId + '"]'
+      );
+      if (chain) chain.classList.toggle('hash-chain--open');
     }});
   }});
 }})();
