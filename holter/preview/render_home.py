@@ -247,6 +247,10 @@ def card_delta(pack_name: str) -> dict:
     change_str, change_color = _DELTA_CHANGES[(h // 3) % len(_DELTA_CHANGES)]
     conf_label, conf_score, conf_color = _DELTA_CONFIDENCE[(h // 7) % len(_DELTA_CONFIDENCE)]
     n_findings = 1 + (h % 7)
+    # HOL-27 — categorical velocity tag (Klein's "structure fire vs vehicle
+    # fire" framing wants categorical, not continuous). Derived from
+    # time-since-surfaced + tier-change direction.
+    velocity = _classify_velocity(time_str, change_str)
     return {
         "time": time_str,
         "change": change_str,
@@ -255,7 +259,37 @@ def card_delta(pack_name: str) -> dict:
         "conf_score": conf_score,
         "conf_color": conf_color,
         "n_findings": n_findings,
+        "velocity": velocity,  # {label, color, icon}
     }
+
+
+def _classify_velocity(time_str: str, change_str: str) -> dict:
+    """HOL-27 — pick one of 4 categorical velocity tags from time + change."""
+    # Falling tier overrides time — engine has confirmed de-escalation
+    if change_str.startswith("↓"):
+        return {"icon": "▽", "label": "COOLING",  "color": "var(--green)"}
+    # Fresh + escalating (or fresh + new) = the "structure fire" case
+    if time_str in {"2h ago", "6h ago"}:
+        return {"icon": "▲", "label": "JUST HOT", "color": "var(--blue)"}
+    # Mid-range = steady-state observation window
+    if time_str == "yesterday":
+        return {"icon": "▬", "label": "STEADY",   "color": "var(--text-3)"}
+    # Long-lived same-tier = plateau, the "been hot for days" case
+    return {"icon": "═", "label": "PLATEAU",  "color": "var(--amber)"}
+
+
+def render_velocity_tag(delta: dict) -> str:
+    """Small mono badge — categorical tempo signal (HOL-27, Klein)."""
+    v = delta.get("velocity")
+    if not v:
+        return ""
+    return (
+        f'<span class="velocity-tag" '
+        f'style="color:{v["color"]};border-color:{v["color"]};" '
+        f'data-tooltip="Tempo of this signal — distinguishes &quot;just went hot&quot; from &quot;been hot for days&quot;.">'
+        f'{v["icon"]} {v["label"]}'
+        f'</span>'
+    )
 
 
 def render_confidence_chip(delta: dict) -> str:
@@ -633,6 +667,14 @@ a { color: var(--blue); text-decoration: none; }
   border: 1px solid currentColor;
   border-radius: 2px;
 }
+/* HOL-27 — velocity tag (categorical tempo: JUST HOT / STEADY / COOLING / PLATEAU) */
+.velocity-tag {
+  font-family: var(--mono); font-weight: 800;
+  font-size: 9px; letter-spacing: 1px;
+  padding: 2px 7px;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+}
 .delta-strip {
   display: flex; align-items: center; gap: 6px;
   font-family: var(--mono); font-size: 10px;
@@ -746,6 +788,7 @@ def render_hero(top_signal: dict) -> str:
         {tooltip_token("action", tier)}
       </span>
       {render_confidence_chip(delta)}
+      {render_velocity_tag(delta)}
       <span>FLAGGED · {journey}</span>
     </div>
     <div class="hero-card-headline">{headline}</div>
@@ -777,6 +820,7 @@ def render_feed_card(*, tag: str, tag_color: str, headline: str, summary: str,
             f'{tooltip_token(tier_dim, tier)}</span>'
         )
     confidence_html = render_confidence_chip(delta) if delta else ""
+    velocity_html = render_velocity_tag(delta) if delta else ""
     delta_html = (
         render_delta_strip(delta, preview_text, suppress_change=suppress_change)
         if delta else ""
@@ -793,6 +837,7 @@ def render_feed_card(*, tag: str, tag_color: str, headline: str, summary: str,
   <div class="feed-card-meta">
     <span class="feed-card-tag" style="color:{tag_color};">{tag}</span>
     {confidence_html}
+    {velocity_html}
     {tier_html}
     {held_tag}
   </div>
