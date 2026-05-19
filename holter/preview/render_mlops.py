@@ -190,8 +190,19 @@ def synthesis_governance(pack_name: str) -> dict:
         att_color = "var(--amber)"
     else:
         mode = "DETERMINISTIC"
-        attestation = "independently_assessed" if (h % 5) else "certified"
-        att_color = "var(--green)" if attestation == "certified" else "var(--teal)"
+        # ~20% of deterministic also land in attestation_pending — e.g.
+        # newly-onboarded packs awaiting independent assessment. These
+        # are the second class of rows MRM needs to act on.
+        bucket = h % 3
+        if bucket == 0:
+            attestation = "attestation_pending"
+            att_color = "var(--amber)"
+        elif bucket == 1:
+            attestation = "certified"
+            att_color = "var(--green)"
+        else:
+            attestation = "independently_assessed"
+            att_color = "var(--teal)"
     return {
         "synthesis_mode":  mode,
         "mode_color":      "var(--red)" if is_llm else "var(--green)",
@@ -199,6 +210,11 @@ def synthesis_governance(pack_name: str) -> dict:
         "att_color":       att_color,
         "reviewer":        "MRM-A · J. Patel" if (h % 3) else "MRM-B · S. Khan",
         "reviewed_date":   "2026-04-22" if (h % 5) else "2026-05-08",
+        # HOL-42: PENDING rows get inline Attest/Challenge/Defer
+        # affordances. Two flavours of "pending": (a) LLM_AUGMENTED
+        # self_declared, (b) DETERMINISTIC attestation_pending. Rock's
+        # R2 hard-gate fix: governance state needs governance affordance.
+        "is_actionable":   attestation in ("self_declared", "attestation_pending"),
     }
 
 
@@ -443,6 +459,66 @@ CSS_EXTRA = """
 .govern-table tr.cell-row-highlighted td:first-child {
   box-shadow: inset 3px 0 0 var(--blue);
 }
+
+/* HOL-42 — Attest/Challenge/Defer affordance on PENDING SYNTHESIS rows.
+   Rock's R2 hard-gate critique: governance state without governance affordance
+   is not a defensible surface. These 3 buttons let MRM record a decision
+   from the screen (in-session log; engine wiring is PULSE's job). */
+.govern-actions {
+  display: inline-flex; gap: 4px; align-items: center;
+}
+.govern-action-btn {
+  font-family: var(--mono); font-size: 9px; font-weight: 700;
+  letter-spacing: 0.6px; text-transform: uppercase;
+  padding: 2px 6px;
+  background: transparent;
+  color: var(--text-2);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all 100ms ease;
+}
+.govern-action-btn:hover {
+  border-color: var(--text-2);
+  color: var(--text);
+  background: var(--card-2);
+}
+.govern-action-btn--attest:hover  { border-color: var(--green); color: var(--green); }
+.govern-action-btn--challenge:hover { border-color: var(--amber); color: var(--amber); }
+.govern-action-btn--defer:hover   { border-color: var(--text-3); color: var(--text-3); }
+.govern-actions-none {
+  font-family: var(--mono); color: var(--text-3); font-size: 9px;
+}
+/* Resolved row state — replaces buttons with the recorded decision */
+.govern-row--resolved {
+  opacity: 0.65;
+}
+.govern-row--resolved td:first-child a.cell-link {
+  text-decoration: line-through;
+}
+.govern-resolved-badge {
+  font-family: var(--mono); font-weight: 800; font-size: 9px;
+  letter-spacing: 0.8px; padding: 1px 6px;
+  border-radius: 2px;
+}
+.govern-resolved-badge--attested   { color: var(--green); border: 1px solid var(--green); }
+.govern-resolved-badge--challenged { color: var(--amber); border: 1px solid var(--amber); }
+.govern-resolved-badge--deferred   { color: var(--text-3); border: 1px solid var(--text-3); }
+/* Session log tray below the governance table */
+.govern-session-log {
+  margin-top: 8px;
+  padding: 6px 10px;
+  background: var(--card-2);
+  border-left: 2px solid var(--text-3);
+  font-family: var(--mono); font-size: 9px;
+  color: var(--text-3); letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+.govern-session-log--active {
+  border-left-color: var(--blue);
+  color: var(--text-2);
+}
+.govern-session-log-count { color: var(--blue); font-weight: 800; }
 """
 
 
@@ -652,12 +728,29 @@ def render_synthesis_pane(packs: list[dict]) -> str:
     n_certified = sum(1 for _, g in rows if g["attestation"] == "certified")
 
     table_rows = []
+    n_actionable = 0
     for p, g in rows[:6]:
         h = p["hypothesis"] or {}
         cell = _e(str(h.get("cell_id", "?")))
+        # HOL-42: PENDING rows get inline action cluster; resolved rows
+        # show "—". JS swaps the row state in-session when buttons are clicked.
+        if g["is_actionable"]:
+            n_actionable += 1
+            actions_cell = (
+                f'<td><span class="govern-actions" data-cell-id="{cell}">'
+                f'<button class="govern-action-btn govern-action-btn--attest" '
+                f'data-action="attest" data-cell-id="{cell}" type="button">Attest</button>'
+                f'<button class="govern-action-btn govern-action-btn--challenge" '
+                f'data-action="challenge" data-cell-id="{cell}" type="button">Challenge</button>'
+                f'<button class="govern-action-btn govern-action-btn--defer" '
+                f'data-action="defer" data-cell-id="{cell}" type="button">Defer</button>'
+                f'</span></td>'
+            )
+        else:
+            actions_cell = '<td><span class="govern-actions-none">—</span></td>'
         # HOL-39: row carries data-cell-id; cell column is the click-target
         table_rows.append(
-            f'<tr class="cell-row" data-cell-id="{cell}">'
+            f'<tr class="cell-row" data-cell-id="{cell}" data-row-state="pending">'
             f'<td><a class="cell-link" href="#cell-{cell}" data-cell-id="{cell}">cell {cell}</a></td>'
             f'<td><span class="govern-badge" style="color:{g["mode_color"]};">'
             f'{g["synthesis_mode"]}</span></td>'
@@ -665,16 +758,23 @@ def render_synthesis_pane(packs: list[dict]) -> str:
             f'{g["attestation"]}</span></td>'
             f'<td>{_e(g["reviewer"])}</td>'
             f'<td>{_e(g["reviewed_date"])}</td>'
+            f'{actions_cell}'
             f'</tr>'
         )
     table_html = (
         '<table class="govern-table">'
         '<thead><tr>'
         '<th>cell</th><th>mode</th><th>attestation</th>'
-        '<th>reviewer</th><th>reviewed</th>'
+        '<th>reviewer</th><th>reviewed</th><th>actions</th>'
         '</tr></thead>'
         f'<tbody>{"".join(table_rows)}</tbody>'
         '</table>'
+        # HOL-42: session log tray — JS updates count + last action
+        f'<div class="govern-session-log" id="govern-session-log" '
+        f'data-pending="{n_actionable}">'
+        f'session log · 0 decisions recorded · '
+        f'<span class="govern-session-log-count">{n_actionable}</span> pending'
+        f'</div>'
     )
 
     # HOL-40 — severity driven by LLM_AUGMENTED count
@@ -796,6 +896,83 @@ def render_page() -> str:
     if (!ev.target.closest('.cell-link') && !ev.target.closest('.cell-row')) {{
       clearAll();
     }}
+  }});
+}})();
+
+// HOL-42 — Attest / Challenge / Defer affordance. In-session event log;
+// engine wiring is PULSE's job, this surface renders the affordance + the
+// in-session state change so a reviewer can record a governance decision.
+window.holterEventLog = window.holterEventLog || [];
+
+(function () {{
+  const REVIEWER = 'HA';  // session reviewer initials (top-nav avatar)
+
+  function recordAction(cellId, action, reason) {{
+    const event = {{
+      cell_id: cellId,
+      action: action,
+      reason: reason || null,
+      reviewer: REVIEWER,
+      timestamp: new Date().toISOString(),
+    }};
+    window.holterEventLog.push(event);
+    console.log('[holter-event]', event);
+    return event;
+  }}
+
+  function resolveRow(cellId, action) {{
+    const row = document.querySelector(
+      '.govern-table tr.cell-row[data-cell-id="' + cellId + '"]'
+    );
+    if (!row) return;
+    row.setAttribute('data-row-state', action);
+    row.classList.add('govern-row--resolved');
+    const actionsCell = row.querySelector('td:last-child');
+    if (actionsCell) {{
+      actionsCell.innerHTML = '<span class="govern-resolved-badge ' +
+        'govern-resolved-badge--' + action + 'ed">' +
+        action.toUpperCase() + 'ED</span>';
+    }}
+  }}
+
+  function updateSessionLog() {{
+    const log = document.getElementById('govern-session-log');
+    if (!log) return;
+    const n = window.holterEventLog.length;
+    const initialPending = parseInt(log.getAttribute('data-pending'), 10);
+    const stillPending = Math.max(0, initialPending - n);
+    const last = n ? window.holterEventLog[n - 1] : null;
+    if (n === 0) {{
+      log.innerHTML = 'session log · 0 decisions recorded · ' +
+        '<span class="govern-session-log-count">' + initialPending +
+        '</span> pending';
+    }} else {{
+      log.classList.add('govern-session-log--active');
+      log.innerHTML = 'session log · ' +
+        '<span class="govern-session-log-count">' + n + '</span> recorded · ' +
+        stillPending + ' pending · last: cell ' + last.cell_id + ' ' +
+        last.action.toUpperCase() +
+        (last.reason ? ' (' + last.reason.slice(0, 30) + ')' : '');
+    }}
+  }}
+
+  document.querySelectorAll('.govern-action-btn').forEach(btn => {{
+    btn.addEventListener('click', function (ev) {{
+      ev.preventDefault();
+      ev.stopPropagation();
+      const cellId = this.getAttribute('data-cell-id');
+      const action = this.getAttribute('data-action');
+      let reason = null;
+      if (action === 'challenge') {{
+        reason = window.prompt(
+          'Challenge cell ' + cellId + ' — reason (cohort scope + concern):'
+        );
+        if (reason === null) return;  // user cancelled
+      }}
+      recordAction(cellId, action, reason);
+      resolveRow(cellId, action);
+      updateSessionLog();
+    }});
   }});
 }})();
 </script>
