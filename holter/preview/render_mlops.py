@@ -675,6 +675,90 @@ body[data-window="30d"] .drift-cell-spark svg[data-window="30d"] {
                    text-align: right; }
 .hash-chain-arrow { color: var(--text-3); opacity: 0.6;
                     padding: 1px 0 3px 0; }
+
+/* HOL-44 — Top-of-page decision frame. Young's R2 ask: "I land on this page
+   and don't know what I'm supposed to do. The 4 panes feel like 4 separate
+   status checks." Replaces the bare procurement-gate masthead. */
+.mlops-decision-frame {
+  background: var(--card-elev);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--blue);
+  border-radius: 4px;
+  padding: 14px 18px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto;
+  gap: 10px 24px;
+  align-items: center;
+}
+.mlops-decision-frame--acute   { border-left-color: var(--red); }
+.mlops-decision-frame--escalate{ border-left-color: var(--amber); }
+
+.mlops-decision-trigger {
+  grid-column: 1;
+  font-size: 13px; line-height: 1.45;
+  color: var(--text);
+}
+.mlops-decision-trigger-tag {
+  display: inline-block; padding: 1px 6px;
+  font-family: var(--mono); font-size: 9px; font-weight: 800;
+  letter-spacing: 0.8px;
+  border: 1px solid currentColor; border-radius: 2px;
+  margin-right: 6px;
+}
+.mlops-decision-trigger-pack {
+  font-family: var(--mono); font-size: 11px;
+  color: var(--text); background: var(--card-2);
+  padding: 1px 5px; border-radius: 2px;
+}
+
+.mlops-decision-actions {
+  grid-column: 2;
+  display: inline-flex; gap: 6px;
+}
+.mlops-decision-btn {
+  font-family: var(--mono); font-size: 10px; font-weight: 700;
+  letter-spacing: 0.8px; text-transform: uppercase;
+  padding: 6px 12px;
+  background: transparent;
+  color: var(--text-2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 100ms ease;
+  white-space: nowrap;
+}
+.mlops-decision-btn:hover {
+  border-color: var(--text-2); color: var(--text);
+  background: var(--card-2);
+}
+.mlops-decision-btn--approve:hover   { border-color: var(--green); color: var(--green); }
+.mlops-decision-btn--committee:hover { border-color: var(--amber); color: var(--amber); }
+.mlops-decision-btn--retrain:hover   { border-color: var(--red); color: var(--red); }
+
+.mlops-decision-session {
+  grid-column: 1 / 3;
+  display: flex; gap: 16px; align-items: center;
+  padding-top: 8px; border-top: 1px dashed var(--border);
+  font-family: var(--mono); font-size: 9px;
+  color: var(--text-3); letter-spacing: 0.7px; text-transform: uppercase;
+}
+.mlops-decision-session-reviewer { color: var(--text-2); }
+.mlops-decision-session-count { color: var(--blue); font-weight: 800; }
+.mlops-decision-session-confirm {
+  margin-left: auto;
+  color: var(--green); font-weight: 800;
+  opacity: 0; transition: opacity 200ms ease;
+}
+.mlops-decision-session-confirm--shown { opacity: 1; }
+
+/* Demote old masthead — only date strip remains (top-right, slim) */
+.mlops-masthead { display: none; }
+.mlops-dateline {
+  font-family: var(--mono); font-size: 9px; color: var(--text-3);
+  letter-spacing: 1.2px; text-transform: uppercase;
+  text-align: right; margin-top: -8px;
+}
 """
 
 
@@ -1031,12 +1115,80 @@ def render_topnav() -> str:
 
 
 def render_masthead() -> str:
+    """Deprecated by HOL-44 — kept for back-compat; CSS hides it. Date
+    strip moved into render_decision_frame() top-right corner."""
     today = _dt.date.today().strftime("%A · %d %b %Y")
-    return f"""
-<div class="mlops-masthead">
-  <div class="mlops-masthead-title">MLOps Console — procurement gate</div>
-  <div class="mlops-masthead-dateline">{today} · {NOW}</div>
-</div>"""
+    return f'<div class="mlops-masthead">MLOps Console · {today} · {NOW}</div>'
+
+
+def render_decision_frame(packs: list[dict]) -> str:
+    """HOL-44 — Top-of-page decision frame. Replaces the bare procurement-gate
+    masthead with a Young/Burt/Rock-aligned "why you are here today" framing.
+
+    Composition (matches ticket acceptance):
+      - Trigger sentence — computed from worst-cell drift + flagged count
+      - Decision frame — 3-button cluster [Approve 14d / Committee / Retrain]
+      - Session badge — reviewer + session start + decisions logged
+    """
+    # Compute trigger from drift (worst-cell pack)
+    worst_delta = 0
+    worst_pack = None
+    for p in packs[:5]:
+        cs = drift_series(p["meta"]["pack_name"])
+        delta = cs[-1] - cs[-8]
+        if abs(delta) > abs(worst_delta):
+            worst_delta = delta
+            worst_pack = p
+
+    sev = classify_drift_severity(worst_delta)  # NOMINAL/WATCH/ESCALATE/ACUTE
+    sev_color = {
+        "ACUTE":    "var(--red)",
+        "ESCALATE": "var(--amber)",
+        "WATCH":    "var(--amber)",
+        "NOMINAL":  "var(--green)",
+    }[sev]
+    frame_mod = f"mlops-decision-frame--{sev.lower()}" if sev in ("ACUTE", "ESCALATE") else ""
+
+    pack_name = worst_pack["meta"]["pack_name"] if worst_pack else "—"
+    cell_id = (worst_pack["hypothesis"] or {}).get("cell_id", "?") if worst_pack else "?"
+
+    # Count cohorts below floor across all packs (matches FAIRNESS pane logic)
+    cohorts_below = 0
+    for p in packs:
+        f_ = fairness_record(p["meta"]["pack_name"])
+        if f_["equalised_odds"] < 0.85:
+            cohorts_below += 1
+
+    trigger = (
+        f'<span class="mlops-decision-trigger-tag" style="color:{sev_color};">{sev}</span>'
+        f'Model <span class="mlops-decision-trigger-pack">{_e(pack_name)}</span> '
+        f'manual re-check flagged <strong>{sev}</strong> — '
+        f'drift {worst_delta:+d}pp on cell {_e(str(cell_id))} · '
+        f'{cohorts_below}/{len(packs)} cohorts below equalised-odds floor.'
+    )
+
+    today = _dt.date.today().strftime("%a · %d %b")
+    session_start = NOW
+
+    return f'''
+<div class="mlops-decision-frame {frame_mod}">
+  <div class="mlops-decision-trigger">{trigger}</div>
+  <div class="mlops-decision-actions">
+    <button class="mlops-decision-btn mlops-decision-btn--approve"
+            data-decision="approve_14d" type="button">Approve for prod · 14d</button>
+    <button class="mlops-decision-btn mlops-decision-btn--committee"
+            data-decision="route_committee" type="button">Route to committee</button>
+    <button class="mlops-decision-btn mlops-decision-btn--retrain"
+            data-decision="request_retrain" type="button">Request retraining</button>
+  </div>
+  <div class="mlops-decision-session">
+    <span>reviewer · <span class="mlops-decision-session-reviewer">HA · Hussain Ahmed</span></span>
+    <span>session · {today} · started {session_start}</span>
+    <span>decisions · <span class="mlops-decision-session-count" id="mlops-decision-count">0</span></span>
+    <span class="mlops-decision-session-confirm" id="mlops-decision-confirm"></span>
+  </div>
+</div>
+<div class="mlops-dateline">MLOps Console · {today} · {session_start}</div>'''
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1067,7 +1219,7 @@ def render_page() -> str:
 <body>
 {render_topnav()}
 <main class="mlops-page">
-{render_masthead()}
+{render_decision_frame(packs)}
 <div class="mlops-grid">{panes}</div>
 </main>
 <script>
@@ -1208,6 +1360,42 @@ window.holterEventLog = window.holterEventLog || [];
         '.hash-chain[data-chain-for="' + cellId + '"]'
       );
       if (chain) chain.classList.toggle('hash-chain--open');
+    }});
+  }});
+}})();
+
+// HOL-44 — Top-of-page decision frame. Three model-scope decisions:
+// Approve 14d / Route to committee / Request retraining. Writes the
+// same window.holterEventLog used by HOL-42 (scope: 'model' vs cell-N).
+(function () {{
+  const countEl = document.getElementById('mlops-decision-count');
+  const confirmEl = document.getElementById('mlops-decision-confirm');
+  let modelDecisions = 0;
+
+  function flashConfirm(text) {{
+    if (!confirmEl) return;
+    confirmEl.textContent = '✓ ' + text;
+    confirmEl.classList.add('mlops-decision-session-confirm--shown');
+    setTimeout(() => {{
+      confirmEl.classList.remove('mlops-decision-session-confirm--shown');
+    }}, 2400);
+  }}
+
+  document.querySelectorAll('.mlops-decision-btn').forEach(btn => {{
+    btn.addEventListener('click', function (ev) {{
+      ev.preventDefault();
+      const decision = this.getAttribute('data-decision');
+      window.holterEventLog = window.holterEventLog || [];
+      window.holterEventLog.push({{
+        scope: 'model',
+        decision: decision,
+        reviewer: 'HA',
+        timestamp: new Date().toISOString(),
+      }});
+      modelDecisions += 1;
+      if (countEl) countEl.textContent = modelDecisions;
+      flashConfirm(decision.replace(/_/g, ' '));
+      console.log('[holter-event]', window.holterEventLog[window.holterEventLog.length - 1]);
     }});
   }});
 }})();
