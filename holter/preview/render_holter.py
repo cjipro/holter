@@ -90,8 +90,6 @@ from holter.preview._shared import (  # noqa: E402
     sparkline_svg,
     # Commercial signal (friction-volume primary, £ scaffold secondary)
     friction_volume_value,
-    friction_volume_label,
-    friction_volume_headline,
     commercial_scaffold,
 )
 

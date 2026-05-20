@@ -67,7 +67,6 @@ from holter.preview._shared import (  # noqa: E402
     _ACTION_COLORS,
     _RISK_COLORS,
     _VALUE_COLORS,
-    friction_volume_value,
     friction_volume_headline,
     commercial_scaffold,
 )

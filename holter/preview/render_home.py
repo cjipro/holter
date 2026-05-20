@@ -50,7 +50,6 @@ from holter.preview._shared import (  # noqa: E402
     tooltip_token,
     render_glossary_panel,
     friction_volume_value,
-    friction_volume_headline,
     commercial_scaffold,
 )
 
