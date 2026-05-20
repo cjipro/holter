@@ -102,6 +102,13 @@ and the GitHub org.
   isn't on the list, find a substitute that is — or file a ticket proposing
   it before adding. Mirrored verbatim in
   `while-sleeping/APPROVED_LIBRARIES.md`; edit both together.
+- **Data layer: DuckDB + PyArrow over Parquet, not Spark.** PySpark 2.4 is
+  incompatible with the Python 3.11 lock, so the data-serving engine is
+  in-process DuckDB with PyArrow zero-copy interchange into FastAPI. Must
+  scale to 2.4B–5B rows; the encoding/cache strategy (dictionary-encode
+  low-cardinality string columns, pushdown, DuckDB resource caps) is tracked
+  in [PULSE-110](https://cjipro.atlassian.net/browse/PULSE-110). Full rationale:
+  [`docs/data-layer-architecture.md`](docs/data-layer-architecture.md).
 - **Hodos relationship:** Holter is one application repo. The general engine
   extraction target is Hodos (deferred per architecture panel 2026-04-30 PM).
   Patterns proven in Holter that generalise become candidates for the Hodos
