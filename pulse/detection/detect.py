@@ -1,0 +1,277 @@
+"""Pulse detection runtime — core (PULSE-126).
+
+Executes a decision pack's declarative `analytic` spec over a canonical-event
+session and emits a FrictionBench-shaped detection. **Interpreter, not
+inventor:** the detection logic lives in each pack's `hypothesis.yaml`
+(`analytic` + `negative_class_discriminator`); this module runs it. Classical,
+deterministic, explainable — per the non-LLM runtime lock.
+
+The emitted `Detection.to_scoring_dict()` matches exactly what
+`pulse.frictionbench.scoring.score_detection` consumes (screen_id,
+signature_id, cohort_tags, root_cause, confidence, time_to_detect_seconds), so
+every detection is directly benchmarkable.
+
+Reproducibility: same (hypothesis + session + baseline) → identical Detection,
+incl. `inputs_hash`. The `runtime_version` here + the pack's `analytic` version
+together pin a detection for audit.
+"""
+
+from __future__ import annotations
+
+import datetime as _dt
+import hashlib
+import json
+import math
+from dataclasses import dataclass
+from typing import Any, Callable
+
+DETECTION_RUNTIME_VERSION = "0.1.0"
+
+# When the negative-class discriminator suppresses a candidate, the engine's
+# belief that this session exhibits friction collapses. We cap the emitted
+# confidence at this ceiling so a suppressed cell-10-style session reports a
+# correctly LOW probability-of-friction (good Brier calibration on negatives).
+_SUPPRESSED_CONFIDENCE_CEILING = 0.10
+
+
+# ── inputs ───────────────────────────────────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class Session:
+    """One canonical-event session — the unit of detection.
+
+    `events` are canonical events (PULSE-87 shape); the runtime orders them by
+    `context.sequence_no` (NOT event_ts — network may reorder). `features` are
+    session-level aggregates the sessionisation layer (MA_S) derives, used by
+    the discriminator's session-level suppression signals (scroll_depth_pct,
+    chart_drilldowns_in_session, return_within_7_days, …)."""
+
+    session_id: str
+    screen_id: str
+    cohort_tags: tuple[str, ...]
+    events: tuple[dict, ...]
+    features: dict
+
+
+@dataclass(frozen=True)
+class ScreenBaseline:
+    """Rolling per-screen baseline a method scores against (e.g.
+    rolling_28d_same_screen). `mean`/`std` are over the metric (dwell_seconds)."""
+
+    screen_id: str
+    metric: str
+    mean: float
+    std: float
+    n_sessions: int
+
+
+# ── output ───────────────────────────────────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class Detection:
+    """A friction detection, FrictionBench-shaped + audit footprint.
+
+    `signature_id` is None when the detector did not fire (the FrictionBench
+    "abstain" — correct response on a negative cell). `confidence` is the
+    calibrated P(this session exhibits the signature) and is reported whether
+    or not it fired (a correct non-fire reports LOW confidence). `evidence`
+    carries the `evidence_required` fields the pack declared, for the audit
+    bundle."""
+
+    fired: bool
+    screen_id: str
+    signature_id: str | None
+    cohort_tags: tuple[str, ...]
+    root_cause: str | None
+    confidence: float | None
+    time_to_detect_seconds: float | None
+    evidence: dict
+    suppressed_by: tuple[str, ...]
+    method: str
+    runtime_version: str
+    inputs_hash: str
+
+    def to_scoring_dict(self) -> dict[str, Any]:
+        """The exact shape pulse.frictionbench.scoring.score_detection expects."""
+        return {
+            "screen_id": self.screen_id,
+            "signature_id": self.signature_id,
+            "cohort_tags": list(self.cohort_tags),
+            "root_cause": self.root_cause,
+            "confidence": self.confidence,
+            "time_to_detect_seconds": self.time_to_detect_seconds,
+        }
+
+
+@dataclass(frozen=True)
+class MethodResult:
+    """What a detection method returns before the discriminator is applied."""
+
+    fire_candidate: bool
+    confidence: float        # P(friction) from the statistic, 0..1
+    root_cause: str | None
+    time_to_detect_seconds: float | None
+    evidence: dict
+
+
+# ── method registry ────────────────────────────────────────────────────────────
+
+MethodFn = Callable[[Session, dict, ScreenBaseline], MethodResult]
+_REGISTRY: dict[str, MethodFn] = {}
+
+
+def register_method(name: str) -> Callable[[MethodFn], MethodFn]:
+    def deco(fn: MethodFn) -> MethodFn:
+        _REGISTRY[name] = fn
+        return fn
+    return deco
+
+
+def get_method(name: str) -> MethodFn:
+    if name not in _REGISTRY:
+        raise ValueError(
+            f"unknown analytic.method {name!r}; registered: {sorted(_REGISTRY)}"
+        )
+    return _REGISTRY[name]
+
+
+def registered_methods() -> tuple[str, ...]:
+    return tuple(sorted(_REGISTRY))
+
+
+# ── orchestration ──────────────────────────────────────────────────────────────
+
+
+def run_detection(
+    *, hypothesis: dict, session: Session, baseline: ScreenBaseline
+) -> Detection:
+    """Execute a pack's analytic spec over one session. Pure function."""
+    analytic = hypothesis.get("analytic", {})
+    method_name = analytic.get("method")
+    if not method_name:
+        raise ValueError("hypothesis.analytic.method is required")
+    method = get_method(method_name)
+
+    screen_id = hypothesis.get("screen_id") or session.screen_id
+    signature_id = hypothesis.get("signature_id")
+    discriminator = hypothesis.get("negative_class_discriminator")
+
+    result = method(session, analytic, baseline)
+    suppress, signals_hit = _apply_discriminator(discriminator, session)
+    fired = result.fire_candidate and not suppress
+
+    # Suppression is decisive negative evidence — collapse P(friction).
+    if suppress:
+        confidence = round(min(result.confidence, _SUPPRESSED_CONFIDENCE_CEILING), 4)
+    else:
+        confidence = round(result.confidence, 4)
+
+    evidence = dict(result.evidence)
+    evidence["discriminator_signals_hit"] = list(signals_hit)
+
+    return Detection(
+        fired=fired,
+        screen_id=screen_id,
+        signature_id=signature_id if fired else None,
+        cohort_tags=session.cohort_tags if fired else (),
+        root_cause=result.root_cause if fired else None,
+        confidence=confidence,
+        time_to_detect_seconds=result.time_to_detect_seconds if fired else None,
+        evidence=evidence,
+        suppressed_by=signals_hit,
+        method=method_name,
+        runtime_version=DETECTION_RUNTIME_VERSION,
+        inputs_hash=_hash_inputs(hypothesis, session, baseline),
+    )
+
+
+# ── discriminator ──────────────────────────────────────────────────────────────
+
+
+def _apply_discriminator(
+    discriminator: dict | None, session: Session
+) -> tuple[bool, tuple[str, ...]]:
+    """Apply negative_class_discriminator suppression signals against session
+    features. Returns (suppress, signals_hit). The cell-10 false-positive
+    defence: long dwell on a Premier portfolio screen with engagement signals
+    present is interest, not friction.
+
+    v0.1 honours the structured `suppression_signals`. The free-text
+    `fire_only_if` clause (e.g. "… AND error_type IN […]") is not yet parsed —
+    tracked as a follow-up; suppression_signals carry the cell-10 negative."""
+    if not discriminator:
+        return (False, ())
+    hits: list[str] = []
+    for sig in discriminator.get("suppression_signals", []):
+        name = sig.get("signal")
+        threshold = sig.get("threshold")
+        direction = sig.get("direction")
+        val = session.features.get(name)
+        if val is None or threshold is None:
+            continue
+        if direction == "above" and val > threshold:
+            hits.append(name)
+        elif direction == "above_or_equal" and val >= threshold:
+            hits.append(name)
+        elif direction == "below" and val < threshold:
+            hits.append(name)
+        elif direction == "below_or_equal" and val <= threshold:
+            hits.append(name)
+        elif direction == "equals" and val == threshold:
+            hits.append(name)
+    return (len(hits) > 0, tuple(hits))
+
+
+# ── shared math/helpers (used by methods too) ──────────────────────────────────
+
+
+def normal_cdf(z: float) -> float:
+    """Standard normal CDF via stdlib erf (no scipy dependency)."""
+    return 0.5 * (1.0 + math.erf(z / math.sqrt(2.0)))
+
+
+def elapsed_seconds(start_ts: str | None, end_ts: str | None) -> float | None:
+    """Seconds between two ISO-8601 timestamps; None if either is unparseable."""
+    if not start_ts or not end_ts:
+        return None
+    try:
+        a = _dt.datetime.fromisoformat(start_ts.replace("Z", "+00:00"))
+        b = _dt.datetime.fromisoformat(end_ts.replace("Z", "+00:00"))
+    except (ValueError, AttributeError):
+        return None
+    return (b - a).total_seconds()
+
+
+def ordered_events(session: Session) -> list[dict]:
+    """Canonical events ordered by sequence_no (authoritative, not event_ts)."""
+    return sorted(session.events, key=lambda e: e.get("context", {}).get("sequence_no", 0))
+
+
+def _hash_inputs(hypothesis: dict, session: Session, baseline: ScreenBaseline) -> str:
+    payload = {
+        "analytic": hypothesis.get("analytic", {}),
+        "signature_id": hypothesis.get("signature_id"),
+        "screen_id": hypothesis.get("screen_id"),
+        "discriminator": hypothesis.get("negative_class_discriminator"),
+        "session_id": session.session_id,
+        "events": [
+            {
+                "sequence_no": e.get("context", {}).get("sequence_no"),
+                "event_type": e.get("event", {}).get("event_type"),
+                "payload": e.get("event", {}).get("payload", {}),
+            }
+            for e in ordered_events(session)
+        ],
+        "features": session.features,
+        "baseline": {
+            "screen_id": baseline.screen_id,
+            "metric": baseline.metric,
+            "mean": baseline.mean,
+            "std": baseline.std,
+        },
+        "runtime_version": DETECTION_RUNTIME_VERSION,
+    }
+    serialised = json.dumps(payload, sort_keys=True, default=str).encode("utf-8")
+    return hashlib.sha256(serialised).hexdigest()
