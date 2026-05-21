@@ -973,7 +973,7 @@ def render_synthesis_pane(packs: list[dict]) -> str:
 
 def render_topnav() -> str:
     return f"""
-<header class="home-topnav">
+<header class="holter-topnav">
   <span class="brand-logo">CJI&nbsp;PULSE</span>
   <span class="topnav-spacer"></span>
   <button class="topnav-icon" type="button" title="Search packs (/)">⌕</button>

@@ -50,6 +50,20 @@ Audit screenshots: `dist/audit/hol4-home-*.png`, `dist/audit/hol3-workspace-*.pn
 
 **Defer:** HOL-49..54 residual backlog, HOL-7 (gated on registry ≥40 packs), HOL-47/48 (engine-blocked). Remaining PULSE-126 build items (rolling-28d baseline service, cohort split, bootstrap-CI calibration) are backlog. Any panel re-scoring of HOL-3/4/6 is premature.
 
+## 🔒 Final design-lock pass — Holter surfaces LOCKED (2026-05-21)
+
+Hussain directed a final design-lock visit: review all three live HTML surfaces **through the Chrome DevTools MCP** and confirm alignment with the *corrected* Pulse framing (the corrections that landed AFTER the 05-19 locks — [[no-pound-pandora]], [[commercial-value-first]], [[pulse-multisignal-identity]], [[friction-identification-is-core]]). Verdict + outcome:
+
+**Already aligned (the post-05-19 corrections are visible + correct):** friction-volume primary with £ scaffolded behind it (`RECOVERABLE ~397/wk`); the dual Compliance/Commercial queue on Home; commercial-back on the MLOps governance decision (`~2,618 sessions/wk held`, no £ in the approval trail); cohort-disaggregated fairness.
+
+**One material misalignment found + fixed this session:** multi-signal identity was not expressed — every finding read single-signal (app behavioural). Fixed by **HOL-63** — a `signal_provenance()` strip (`_shared.py`, single source of truth) on the Home heroes + Workspace verdict: `● BEHAVIOUR ● DEMOGRAPHICS` fused (teal), `○ VULNERABILITY ○ VOICE ○ CALLS` pending (dashed), each pending token naming its gating ticket on hover (VULNERABILITY→PULSE-122, VOICE/CALLS→PULSE-121). Honest provenance, never fabricated.
+
+**Plus one bug fix:** **HOL-64** — MLOps top-nav stacked vertically (used `.home-topnav`, undefined in `_shared.CSS`); switched to `.holter-topnav`. Nav now consistent across all three surfaces.
+
+**Lock state after this pass:** HOL-3 Workspace · HOL-4 Home · HOL-6 MLOps are **DESIGN-LOCKED** (HOL-6 promoted from LOCK-ELIGIBLE — the Opus-panel "one more iteration" ask is engine-contract CI work, HOL-48, not design). 485 tests pass. Surfaces re-verified live via MCP on :8504/:8505/:8506. HOL-7 Monitor stays gated (registry ≥40 packs); HOL-5 API shipped (no UI).
+
+**Residual backlog (NOT lock-blockers):** extend the signal strip to feed cards + MLOps decision frame; per-finding provenance once the engine returns it; strict no-pound-pandora £-to-hover demotion. Do not re-open these surfaces for re-scoring without (a) ≥1 residual shipped OR (b) real-analyst study findings.
+
 ## Project Identity
 
 - **Codename:** Holter (after Norman Holter, inventor of the wearable continuous ECG monitor, 1949)
@@ -177,7 +191,7 @@ work-tracking level, not the codebase level.
   **PULSE-126 = the detection runtime keystone — BUILT + FrictionBench-validated
   v0.1 2026-05-21** (`pulse/detection/`, macro 0.985, 0 FPs, cell-10 PASS).
   **PULSE-127 = next engine ticket** (current high water PULSE-126).
-- **HOL-1..62** (current high water as of 2026-05-21). Recent activity:
+- **HOL-1..64** (current high water as of 2026-05-21). Recent activity:
   HOL-12..17 shipped (HOL-3 Workspace design-panel arc, design-locked
   2026-05-19); HOL-18..23 filed as Workspace residual backlog; HOL-4,
   HOL-24..30 shipped (HOL-4 Pulse Home design-panel arc, design-locked
@@ -197,7 +211,10 @@ work-tracking level, not the codebase level.
   · Protocol typing), HOL-60 (retroactive friction-volume surface rework),
   HOL-61 (Workspace EVIDENCE impact overlay — blocked by PULSE-119/120 +
   detector), HOL-62 (pre-analysis foundation 4/6: define decision-owner).
-  **HOL-63 = next UI/build ticket** (current high water HOL-62).
+  Then 2026-05-21 final design-lock pass: HOL-63 (multi-signal provenance
+  strip on Home heroes + Workspace verdict — SHIPPED), HOL-64 (MLOps top-nav
+  stacking fix — SHIPPED). **HOL-65 = next UI/build ticket** (current high
+  water HOL-64).
 
 ## Locked decisions
 
