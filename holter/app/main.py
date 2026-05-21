@@ -104,6 +104,64 @@ def _render_workspace() -> None:
     )
 
 
+def _record_decision(action: str, scope: str) -> None:
+    import datetime as _dt
+    st.session_state.setdefault("mlops_log", []).append({
+        "ts": _dt.datetime.now(_dt.timezone.utc).strftime("%H:%M:%S"),
+        "scope": scope,
+        "action": action,
+    })
+
+
+def _render_mlops() -> None:
+    """HOL-68 — MRM decision actions wired to live state. Streamlit-native
+    controls outside the locked iframe; decisions append to an in-session log
+    (the prod-stack equivalent of the locked design's window.holterEventLog).
+    The 'business held' metric is live from PULSE-127."""
+    try:
+        rows = friction_read.friction_by_journey()
+    except Exception:
+        rows = []
+    total_friction = sum(r["friction_sessions"] for r in rows)
+    n_journeys = len({r["journey"] for r in rows})
+
+    st.caption(
+        "MRM decision · model cards_credit_apply_eligibility__multi_back_press "
+        "· ACUTE (drift -13pp on cell 8)"
+    )
+    m1, m2 = st.columns(2)
+    m1.metric("Journeys gated by this workflow", n_journeys)
+    m2.metric("Friction sessions held (live · PULSE-127)", f"{total_friction:,}")
+
+    st.write("**Model-scope decision**")
+    a, b, c = st.columns(3)
+    if a.button("APPROVE FOR PROD · 14D", use_container_width=True, type="primary"):
+        _record_decision("APPROVE FOR PROD · 14D", "model")
+    if b.button("ROUTE TO COMMITTEE", use_container_width=True):
+        _record_decision("ROUTE TO COMMITTEE", "model")
+    if c.button("REQUEST RETRAINING", use_container_width=True):
+        _record_decision("REQUEST RETRAINING", "model")
+
+    if rows:
+        labels = {f"{r['journey']} · {r['signature'].replace('_', ' ')}": r for r in rows}
+        st.write("**Pack-scope attestation**")
+        pack_choice = st.selectbox("Pending pack", list(labels), key="mlops_pack")
+        d, e, f = st.columns(3)
+        if d.button("ATTEST", use_container_width=True):
+            _record_decision(f"ATTEST · {pack_choice}", "pack")
+        if e.button("CHALLENGE", use_container_width=True):
+            _record_decision(f"CHALLENGE · {pack_choice}", "pack")
+        if f.button("DEFER", use_container_width=True):
+            _record_decision(f"DEFER · {pack_choice}", "pack")
+
+    log = st.session_state.get("mlops_log", [])
+    st.caption(f"SESSION LOG · {len(log)} decision(s) recorded this session")
+    for entry in reversed(log[-6:]):
+        st.write(f"- `{entry['ts']}` · [{entry['scope']}] {entry['action']}")
+
+    components.html(_mlops_html(), height=2600, scrolling=True)
+
+
 def main() -> None:
     st.sidebar.markdown("## CJI&nbsp;PULSE")
     st.sidebar.caption("Holter front-end · HOL-65/66/67")
@@ -121,7 +179,7 @@ def main() -> None:
     elif choice == _WORKSPACE:
         _render_workspace()
     else:
-        components.html(_mlops_html(), height=2600, scrolling=True)
+        _render_mlops()
 
 
 main()
