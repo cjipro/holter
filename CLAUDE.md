@@ -40,11 +40,15 @@ A surface that does not prominently surface `COMMERCIAL-OPPORTUNITY` is failing 
 
 Audit screenshots: `dist/audit/hol4-home-*.png`, `dist/audit/hol3-workspace-*.png`, `dist/audit/hol6-mlops-*.png`.
 
-## 🎯 Next session entry point (set 2026-05-19 post-audit)
+## 🎯 Next session entry point (set 2026-05-21)
 
-**Build order (dependency-readiness, no phases):** **PULSE-107 first** (engine sized lift — unblocks all 3 HOL tickets) → then **HOL-57** (smallest UI scope, smallest blast radius — proves the bridge before the bigger Home/Workspace surgery) → then **HOL-55** + **HOL-56** in either order (independent of each other once engine ships).
+**FIRST ACTION every session: read the WHOLE memory** — not just `MEMORY.md`'s index, but enough of the linked entries to reconstruct full context before acting. Hussain's standing instruction (2026-05-21). Especially re-read [[commercial-value-first]] + [[dont-lead-with-governance]] + [[pulse-multisignal-identity]] + [[no-pound-pandora]] before any user-facing framing.
 
-Don't skip the re-read of [[commercial-value-first]] + [[dont-lead-with-governance]] before starting any of the above. Don't repeat governance-led framing in any user-facing communication. **Defer:** HOL-49..54 (existing residual backlog), HOL-7 (still gated on registry ≥40 packs), HOL-47/48 (engine-blocked separately). Any panel re-scoring of HOL-3/4/6 is premature until the remediation arc lands.
+**Working mode now = cross-repo collaborative ([[cross-repo-collaboration]]).** Remove the silos between `holter`/Pulse · `while-sleeping`/MIL · `taq-app` · Hodos. Plan and design across all four concerns, not one repo at a time. **Keep the safety/contract boundaries** that are about governance not silos: real-bank PII never enters any OSS repo; `taq`/`real_bank` naming discipline; shared `.env` via `../while-sleeping/.env`; the TAQ↔Pulse crossing contracts.
+
+**Where the build is:** the remediation arc (PULSE-107 + HOL-55/56/57) SHIPPED, then the £-as-primary framing was corrected to friction-volume ([[no-pound-pandora]]). The 10-firm game-changer panel ran ([[pulse-gamechanger-verdict]]) → conditional YES, keystone = detection runtime. **PULSE-126 detection runtime v0.1 is now BUILT + FrictionBench-validated** (`pulse/detection/`, macro 0.985, 0 FPs, cell-10 PASS, pushed). What's still open: the **synthetic→real transfer gap (PULSE-124) is unmeasured** — the real headline metric. Pre-analysis foundations PULSE-121..125 + HOL-62 gate the real-data run.
+
+**Defer:** HOL-49..54 residual backlog, HOL-7 (gated on registry ≥40 packs), HOL-47/48 (engine-blocked). Remaining PULSE-126 build items (rolling-28d baseline service, cohort split, bootstrap-CI calibration) are backlog. Any panel re-scoring of HOL-3/4/6 is premature.
 
 ## Project Identity
 
@@ -59,6 +63,15 @@ Don't skip the re-read of [[commercial-value-first]] + [[dont-lead-with-governan
 This repo lives alongside two others in the cjipro org. Each is a separate
 git repo with its own dependency tree; they share `.env`, the Atlassian site,
 and the GitHub org.
+
+**Working mode (set 2026-05-21): silos removed — plan and design across all
+concerns together.** Treat `holter`/Pulse, `while-sleeping`/MIL, `taq-app`,
+and Hodos as one CJI surface at the *planning/design* level; the next few
+sessions are explicitly cross-repo collaborative. This does NOT relax the
+safety/contract boundaries below (those are about governance, not silos):
+separate git history stands, real-bank PII never crosses, naming discipline
+holds, and code crosses only via documented contracts — no shared imports.
+See [[cross-repo-collaboration]].
 
 | Repo | Path | Role |
 |---|---|---|
