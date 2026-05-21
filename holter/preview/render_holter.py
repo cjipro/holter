@@ -336,11 +336,19 @@ def render_journey_row(packs: list[dict]) -> str:
 _COMMERCIAL_TIERS = {"COMMERCIAL-OPPORTUNITY", "SIGNIFICANT"}
 
 
-def _workspace_default_pack(packs: list[dict]) -> dict:
+def _workspace_default_pack(packs: list[dict], selected_name: str | None = None) -> dict:
     """HOL-56 — Workspace prefers a COMMERCIAL-OPPORTUNITY pack as the default
     selection so the new commercial framing demonstrates on first load. Falls
     back to shared headline_pack (cell 10 / cards-abandon) when no commercial
-    pack is registered. Selection-driven nav overrides this on user pick."""
+    pack is registered.
+
+    HOL-67 — `selected_name` is the user's pick from the Streamlit journey
+    selector (selection-driven nav). When it matches a registered pack, it
+    wins; otherwise the default-selection logic applies."""
+    if selected_name:
+        for p in packs:
+            if p["meta"]["pack_name"] == selected_name:
+                return p
     for p in packs:
         cs = get_pack_cell(p["meta"]["pack_name"])
         if cs is not None and cs.value.tier in _COMMERCIAL_TIERS:
@@ -348,15 +356,14 @@ def _workspace_default_pack(packs: list[dict]) -> dict:
     return headline_pack(packs)
 
 
-def render_box1(packs: list[dict]) -> str:
+def render_box1(packs: list[dict], selected_name: str | None = None) -> str:
     """Box 1 — VERDICT (selection-driven).
 
     Top-nav selection drives this box: user picks a Journey/slice in the
     nav, engine churns DuckDB, returns a verdict object, Box 1 renders it.
-    Design-stub now: uses headline_pack as the selected unit until
-    pulse.workspace.verdict_for(selection) lands (engine-side).
+    HOL-67 — `selected_name` is the live Streamlit journey pick.
     """
-    pack = _workspace_default_pack(packs)
+    pack = _workspace_default_pack(packs, selected_name)
     if not pack:
         return render_box(
             header=box_header("VERDICT", "no selection"),
@@ -599,14 +606,14 @@ def render_box2(packs: list[dict]) -> str:
     )
 
 
-def render_box3(packs: list[dict]) -> str:
+def render_box3(packs: list[dict], selected_name: str | None = None) -> str:
     """Box 3 — EVIDENCE (taste of data).
 
     Headline KPI + 30-day trend sparkline + supporting stats. A "taste"
     of the underlying evidence — full drill-down lives in V3 panels below.
-    Stub trend + counts now; engine returns the time-series + cohort cuts later.
+    HOL-67 — `selected_name` is the live Streamlit journey pick.
     """
-    pack = _workspace_default_pack(packs)
+    pack = _workspace_default_pack(packs, selected_name)
     if not pack:
         return render_box(
             header=box_header("EVIDENCE", "key data"),
@@ -1220,15 +1227,17 @@ FILTER_JS = """
 # Page composition
 # ─────────────────────────────────────────────────────────────────────────────
 
-def render_page() -> str:
+def render_page(selected_pack_name: str | None = None) -> str:
     packs = discover_packs()
     rows_html = ""
 
-    # Row 1 — topbar: Box 1/2/3 only (Box 0 dissolved into sticky filter strip)
+    # Row 1 — topbar: Box 1/2/3 only (Box 0 dissolved into sticky filter strip).
+    # HOL-67 — Box 1 (VERDICT) + Box 3 (EVIDENCE) follow the Streamlit journey
+    # selection; Box 2 (HYPOTHESIS bench) keeps its own dropdown default.
     rows_html += '<div class="holter-row" data-row="topbar">'
-    rows_html += render_box1(packs)
+    rows_html += render_box1(packs, selected_pack_name)
     rows_html += render_box2(packs)
-    rows_html += render_box3(packs)
+    rows_html += render_box3(packs, selected_pack_name)
     rows_html += '</div>'
 
     # Page-chrome strips between topbar row and engine-summary row.
