@@ -158,6 +158,26 @@ def run_detection(
     signature_id = hypothesis.get("signature_id")
     discriminator = hypothesis.get("negative_class_discriminator")
 
+    # Screen-scoping: a pack only evaluates sessions on its own screen. This is
+    # the FrictionBench "~zero false positives on the 754 non-target screens"
+    # property — a pack cannot fire on a screen it doesn't own. Abstain cleanly.
+    hyp_screen = hypothesis.get("screen_id")
+    if hyp_screen and session.screen_id != hyp_screen:
+        return Detection(
+            fired=False,
+            screen_id=hyp_screen,
+            signature_id=None,
+            cohort_tags=(),
+            root_cause=None,
+            confidence=0.0,
+            time_to_detect_seconds=None,
+            evidence={"reason": "screen_mismatch", "session_screen": session.screen_id},
+            suppressed_by=(),
+            method=method_name,
+            runtime_version=DETECTION_RUNTIME_VERSION,
+            inputs_hash=_hash_inputs(hypothesis, session, baseline),
+        )
+
     result = method(session, analytic, baseline)
     suppress, signals_hit = _apply_discriminator(discriminator, session)
     fired = result.fire_candidate and not suppress
