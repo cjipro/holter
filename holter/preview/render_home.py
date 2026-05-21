@@ -52,7 +52,39 @@ from holter.preview._shared import (  # noqa: E402
     friction_volume_value,
     commercial_scaffold,
     signal_provenance,
+    _format_count,
 )
+
+
+def _live_friction_index() -> dict[tuple[str, str], int]:
+    """HOL-66 / PULSE-127 — live detected friction-session counts keyed by
+    (screen_id, signature). Fails soft: returns {} if the marts / DuckDB are
+    unavailable, so the feed always renders (cards fall back to the engine
+    ValueScore projection). Article Zero: degrade visibly, never crash."""
+    try:
+        from pulse.serving import read as _read
+        return {
+            (r["screen_id"], r["signature"]): int(r["friction_sessions"])
+            for r in _read.friction_by_journey()
+        }
+    except Exception:
+        import logging
+        logging.exception(
+            "live friction index unavailable; cards fall back to engine projection"
+        )
+        return {}
+
+
+def _volume_and_scaffold(pack: dict, cs, live_index: dict[tuple[str, str], int]):
+    """Option 1 (HOL-66): the verdict stays engine-of-record, but the
+    friction-VOLUME number goes live. If PULSE-127 has a detected count for this
+    card's (screen, signature), use it (marked `live`); else fall back to the
+    engine's ValueScore projection."""
+    screen = (pack.get("hypothesis") or {}).get("screen_id")
+    live_n = live_index.get((screen, cs.signature_id)) if screen else None
+    if live_n is not None:
+        return f"~{_format_count(live_n)}", "live · PULSE-127"
+    return friction_volume_value(cs.value, period="week"), commercial_scaffold(cs.value)
 
 # PR-panel fix (Hettinger): the tier_color lookup in render_feed_card was
 # always using _ACTION_COLORS regardless of tier_dim — silent wrong-color
@@ -970,13 +1002,15 @@ def render_masthead() -> str:
 </div>"""
 
 
-def render_hero(top_signal: dict, lens: str = "compliance") -> str:
+def render_hero(top_signal: dict, lens: str = "compliance",
+                live_index: dict[tuple[str, str], int] | None = None) -> str:
     """The top-of-feed urgency card.
 
     HOL-55 — `lens` chooses the dimension that drives the tier badge:
       "compliance" → action_tier (current behaviour; what CRO sees)
       "commercial" → value_tier (what CCO/COO sees)
-    Sized lift line surfaces under the summary when engine has it."""
+    HOL-66 — `live_index` (PULSE-127) supplies the live friction-volume number;
+    the verdict stays engine-of-record."""
     pack = top_signal["pack"]
     cs   = top_signal["cell_score"]
     if lens == "commercial":
@@ -1025,8 +1059,8 @@ def render_hero(top_signal: dict, lens: str = "compliance") -> str:
     # HOL-55 + no-pound-pandora — friction-volume signal on the hero.
     # Primary unit is sessions/wk recoverable; £ scaffold (if ARPU set) rides
     # in the sub-line, never as the headline number.
-    volume_label = friction_volume_value(cs.value, period="week")
-    scaffold = commercial_scaffold(cs.value)
+    # HOL-66 — live PULSE-127 detected count when available, else engine projection.
+    volume_label, scaffold = _volume_and_scaffold(pack, cs, live_index or {})
     hero_lift_html = (
         f'<div class="hero-card-lift">'
         f'<span class="hero-card-lift-label">RECOVERABLE</span>'
@@ -1130,7 +1164,8 @@ def render_feed_card(*, tag: str, tag_color: str, headline: str, summary: str,
 </a>"""
 
 
-def render_flagged_feed(flagged: list[dict], hero: dict) -> str:
+def render_flagged_feed(flagged: list[dict], hero: dict,
+                        live_index: dict[tuple[str, str], int] | None = None) -> str:
     """3-card grid of next-most-urgent signals (after the hero).
 
     HOL-25 — uses select_flagged_grid() to deduplicate against the hero's
@@ -1171,8 +1206,8 @@ def render_flagged_feed(flagged: list[dict], hero: dict) -> str:
         # HOL-55 — even on the compliance lens, surface friction volume when
         # the engine has it. ACUTE packs are often also COMMERCIAL-OPPORTUNITY
         # on the Value axis (the load-bearing dual-lens case).
-        volume_label = friction_volume_value(cs.value, period="week")
-        scaffold = commercial_scaffold(cs.value)
+        # HOL-66 — live PULSE-127 detected count when available.
+        volume_label, scaffold = _volume_and_scaffold(pack, cs, live_index or {})
         cards.append(render_feed_card(
             tag="FLAGGED",
             tag_color="var(--red)" if tier == "ACUTE" else "var(--amber)",
@@ -1205,7 +1240,8 @@ def render_flagged_feed(flagged: list[dict], hero: dict) -> str:
 </section>"""
 
 
-def render_commercial_queue(signals: list[dict], hero: dict | None) -> str:
+def render_commercial_queue(signals: list[dict], hero: dict | None,
+                            live_index: dict[tuple[str, str], int] | None = None) -> str:
     """HOL-55 — Commercial Opportunities queue. Value-tier-sorted feed cards
     answering the CCO/COO question. Each card carries sized monthly lift
     where ARPU is configured for the journey. Falls back gracefully when
@@ -1242,8 +1278,8 @@ def render_commercial_queue(signals: list[dict], hero: dict | None) -> str:
             summary = summary[:177] + "…"
         delta = card_delta(pack["meta"]["pack_name"])
         preview = f"{delta['n_findings']} sub-findings"
-        volume_label = friction_volume_value(cs.value, period="week")
-        scaffold = commercial_scaffold(cs.value)
+        # HOL-66 — live PULSE-127 detected count when available.
+        volume_label, scaffold = _volume_and_scaffold(pack, cs, live_index or {})
         cards.append(render_feed_card(
             tag="OPPORTUNITY",
             tag_color="var(--green)" if value_tier == "COMMERCIAL-OPPORTUNITY" else "var(--amber)",
@@ -1354,6 +1390,8 @@ def render_page() -> str:
     packs = discover_packs()
     flagged = collect_flagged_signals(packs)
     commercial = collect_commercial_signals(packs)
+    # HOL-66 — live friction volume (PULSE-127). Built once; fails soft to {}.
+    live_index = _live_friction_index()
 
     sections: list[str] = []
     # HOL-55 — dual-hero. Left = compliance lens (severity-sorted). Right =
@@ -1368,7 +1406,7 @@ def render_page() -> str:
             f'COMPLIANCE ESCALATIONS '
             f'<span class="dual-hero-label-sub">CRO lens · severity-sorted</span>'
             f'</div>'
-            f'{render_hero(compliance_hero, lens="compliance") if compliance_hero else ""}'
+            f'{render_hero(compliance_hero, lens="compliance", live_index=live_index) if compliance_hero else ""}'
             f'</div>'
         )
         right_block = (
@@ -1377,7 +1415,7 @@ def render_page() -> str:
             f'COMMERCIAL OPPORTUNITIES '
             f'<span class="dual-hero-label-sub">CCO lens · value-sorted</span>'
             f'</div>'
-            f'{render_hero(commercial_hero, lens="commercial") if commercial_hero else ""}'
+            f'{render_hero(commercial_hero, lens="commercial", live_index=live_index) if commercial_hero else ""}'
             f'</div>'
         )
         sections.append(
@@ -1388,8 +1426,8 @@ def render_page() -> str:
     # commercial right. Stacks to 1 column on narrow viewports via CSS.
     queues: list[str] = []
     if flagged and compliance_hero:
-        queues.append(render_flagged_feed(flagged, compliance_hero))
-    queues.append(render_commercial_queue(commercial, commercial_hero))
+        queues.append(render_flagged_feed(flagged, compliance_hero, live_index))
+    queues.append(render_commercial_queue(commercial, commercial_hero, live_index))
     if queues:
         sections.append(
             f'<section class="dual-queue">{"".join(queues)}</section>'

@@ -46,6 +46,7 @@ from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from pulse.lineage.verifier import verify_chain
+from pulse.serving import read as friction_read
 from pulse.synthesis.base import SynthesisMode
 
 PACKS_DIR = Path(__file__).resolve().parents[2] / "pulse" / "decision_packs"
@@ -122,6 +123,32 @@ class VerifyResponse(BaseModel):
     violations: list[VerifyViolation]
     last_lineage_id: str | None
     last_row_hash: str | None
+
+
+# Friction read layer (PULSE-127) — DuckDB marts served to the surfaces.
+
+class FrictionSummary(BaseModel):
+    total_sessions: int
+    friction_sessions: int
+    fire_rate: float = Field(description="Share of sessions the detector fired on (0..1).")
+    screens: int
+    journeys: int
+
+
+class JourneyFriction(BaseModel):
+    journey: str
+    screen_id: str
+    signature: str
+    sessions: int
+    friction_sessions: int
+    fire_rate: float
+    mean_confidence: float | None = None
+
+
+class CohortFriction(BaseModel):
+    cohort: str
+    friction_sessions: int
+    mean_confidence: float | None = None
 
 
 # --------------------------------------------------------------------- Helpers
@@ -306,3 +333,37 @@ def verify_lineage(req: VerifyRequest) -> VerifyResponse:
         last_lineage_id=report.last_lineage_id,
         last_row_hash=report.last_row_hash,
     )
+
+
+# ---------------------------------------------------------------- Friction (PULSE-127)
+# Real read-side data: the DuckDB friction marts the Streamlit surfaces consume.
+# Synthetic taq corpus locally; real_bank served the same way on the work machine.
+
+@app.get(
+    "/friction/summary",
+    response_model=FrictionSummary,
+    tags=["friction"],
+    summary="Overall friction posture across the corpus",
+)
+def friction_summary() -> FrictionSummary:
+    return FrictionSummary(**friction_read.summary())
+
+
+@app.get(
+    "/friction/by-journey",
+    response_model=list[JourneyFriction],
+    tags=["friction"],
+    summary="Per-journey × signature friction aggregates",
+)
+def friction_by_journey() -> list[JourneyFriction]:
+    return [JourneyFriction(**r) for r in friction_read.friction_by_journey()]
+
+
+@app.get(
+    "/friction/by-cohort",
+    response_model=list[CohortFriction],
+    tags=["friction"],
+    summary="Cohort cuts over fired sessions (fairness / vulnerability lens)",
+)
+def friction_by_cohort() -> list[CohortFriction]:
+    return [CohortFriction(**r) for r in friction_read.friction_by_cohort()]
