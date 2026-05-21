@@ -274,3 +274,173 @@ def test_changing_dwell_changes_hash() -> None:
     a = run_detection(hypothesis=_cell1_hypothesis(), session=_positive_session(), baseline=_loans_baseline())
     b = run_detection(hypothesis=_cell1_hypothesis(), session=_short_dwell_session(), baseline=_loans_baseline())
     assert a.inputs_hash != b.inputs_hash
+
+
+# ── multi_back_press (cell 2) ───────────────────────────────────────────────
+
+
+def _cell2_hypothesis() -> dict:
+    """loans.apply.step3 × multi_back_press."""
+    return {
+        "screen_id": "loans.apply.step3",
+        "signature_id": "multi_back_press",
+        "analytic": {
+            "method": "back_press_burst_detection",
+            "trigger": {"min_back_press_events": 3, "window_seconds": 300, "same_screen_required": True},
+            "discriminator": {"rule": "inter_press_interval_under_seconds", "value": 20},
+        },
+        "cohort_axes": ["device_class"],
+        "negative_class_discriminator": None,
+    }
+
+
+def _back_press_session(intervals_s: int, n: int, cohort: tuple[str, ...]) -> Session:
+    events = [_event(1, "screen_view", "loans.apply.step3", "2026-05-21T10:00:00Z")]
+    for i in range(n):
+        ts = f"2026-05-21T10:0{(i * intervals_s) // 60}:{(i * intervals_s) % 60:02d}Z"
+        events.append(_event(2 + i, "back_press", "loans.apply.step3", ts))
+    return Session("sess-bp", "loans.apply.step3", cohort, tuple(events), {})
+
+
+def test_back_press_tight_burst_fires() -> None:
+    d = run_detection(
+        hypothesis=_cell2_hypothesis(),
+        session=_back_press_session(intervals_s=10, n=4, cohort=("mobile",)),
+        baseline=_loans_baseline(),
+    )
+    assert d.fired is True
+    assert d.signature_id == "multi_back_press"
+    assert d.confidence is not None and d.confidence >= 0.80
+    assert d.evidence["back_press_event_count"] == 4
+    gt = {"screen_id": "loans.apply.step3", "signature_id": "multi_back_press",
+          "should_fire": True, "root_cause": "template", "cohort_tags": ["mobile"]}
+    score = score_detection(d.to_scoring_dict(), gt)
+    assert score.signature == 1.0 and score.cohort == 1.0
+    assert score.aggregate > 0.9
+
+
+def test_back_press_long_intervals_do_not_fire() -> None:
+    """Enough presses, but spaced out → deliberate review, not confusion."""
+    d = run_detection(
+        hypothesis=_cell2_hypothesis(),
+        session=_back_press_session(intervals_s=60, n=4, cohort=("desktop",)),
+        baseline=_loans_baseline(),
+    )
+    assert d.fired is False
+    assert d.signature_id is None
+    assert d.evidence["reason"] == "long_intervals_deliberate_review"
+
+
+def test_back_press_below_threshold_does_not_fire() -> None:
+    d = run_detection(
+        hypothesis=_cell2_hypothesis(),
+        session=_back_press_session(intervals_s=10, n=2, cohort=("mobile",)),
+        baseline=_loans_baseline(),
+    )
+    assert d.fired is False
+    assert d.confidence is not None and d.confidence < 0.5
+
+
+# ── abandon_before_submit (cell 3) ──────────────────────────────────────────
+
+
+def _cell3_hypothesis() -> dict:
+    return {
+        "screen_id": "loans.apply.step3",
+        "signature_id": "abandon_before_submit",
+        "analytic": {
+            "method": "terminal_abandonment_detection",
+            "trigger": {
+                "requires_prior_step_completion": ["step1", "step2"],
+                "requires_dwell_above_percentile": 90,
+                "requires_exit_without_event": "submit_clicked",
+            },
+            "exclusions": [{"session_returned_within_seconds": 1800}],
+        },
+        "cohort_axes": ["age_band"],
+        "negative_class_discriminator": None,
+    }
+
+
+def _abandon_baseline() -> ScreenBaseline:
+    # p90 ≈ 30 + 1.2816*15 ≈ 49.2s
+    return ScreenBaseline("loans.apply.step3", "dwell_seconds", mean=30.0, std=15.0, n_sessions=300)
+
+
+def _abandon_session(features: dict, cohort: tuple[str, ...] = ("under_30",)) -> Session:
+    return Session(
+        "sess-aband", "loans.apply.step3", cohort,
+        (
+            _event(1, "screen_view", "loans.apply.step3", "2026-05-21T10:00:00Z"),
+            _event(2, "nav_intent", "loans.apply.step3", "2026-05-21T10:02:00Z", {"action": "exit"}),
+        ),
+        features,
+    )
+
+
+def test_abandon_fires_on_high_intent_dropoff() -> None:
+    d = run_detection(
+        hypothesis=_cell3_hypothesis(),
+        session=_abandon_session({"prior_steps_completed": ["step1", "step2"], "time_on_step_seconds": 120.0}),
+        baseline=_abandon_baseline(),
+    )
+    assert d.fired is True
+    assert d.signature_id == "abandon_before_submit"
+    assert d.confidence is not None and d.confidence > 0.95   # z = 6
+    gt = {"screen_id": "loans.apply.step3", "signature_id": "abandon_before_submit",
+          "should_fire": True, "root_cause": "template", "cohort_tags": ["under_30"]}
+    score = score_detection(d.to_scoring_dict(), gt)
+    assert score.aggregate > 0.95
+
+
+def test_abandon_does_not_fire_when_submitted() -> None:
+    d = run_detection(
+        hypothesis=_cell3_hypothesis(),
+        session=_abandon_session({"prior_steps_completed": ["step1", "step2"],
+                                  "time_on_step_seconds": 120.0, "submit_clicked": True}),
+        baseline=_abandon_baseline(),
+    )
+    assert d.fired is False
+    assert d.signature_id is None
+    assert d.evidence["reason"] == "submitted"
+
+
+def test_abandon_excluded_on_quick_return() -> None:
+    """Returned within 1800s → tab-park, not abandonment."""
+    d = run_detection(
+        hypothesis=_cell3_hypothesis(),
+        session=_abandon_session({"prior_steps_completed": ["step1", "step2"],
+                                  "time_on_step_seconds": 120.0,
+                                  "session_returned_within_seconds": 600}),
+        baseline=_abandon_baseline(),
+    )
+    assert d.fired is False
+    assert d.evidence["reason"] == "returned_excluded"
+
+
+def test_abandon_does_not_fire_when_prior_steps_incomplete() -> None:
+    d = run_detection(
+        hypothesis=_cell3_hypothesis(),
+        session=_abandon_session({"prior_steps_completed": ["step1"], "time_on_step_seconds": 120.0}),
+        baseline=_abandon_baseline(),
+    )
+    assert d.fired is False
+    assert d.evidence["reason"] == "prior_steps_incomplete"
+
+
+def test_abandon_does_not_fire_below_percentile() -> None:
+    d = run_detection(
+        hypothesis=_cell3_hypothesis(),
+        session=_abandon_session({"prior_steps_completed": ["step1", "step2"], "time_on_step_seconds": 40.0}),
+        baseline=_abandon_baseline(),
+    )
+    assert d.fired is False
+    assert d.evidence["reason"] == "dwell_below_required_percentile"
+
+
+def test_all_three_signature_methods_registered() -> None:
+    assert {
+        "dwell_z_score_vs_screen_baseline",
+        "back_press_burst_detection",
+        "terminal_abandonment_detection",
+    } <= set(registered_methods())
