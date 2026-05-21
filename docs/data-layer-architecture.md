@@ -77,6 +77,49 @@ levers:
 - **Benchmark ladder** — establish baseline + target for memory + p95 latency
   across the scale ladder; define the "lightning-fast" bar quantitatively.
 
+## Mart strategy: one mart per box
+
+The fact table (`MA_S`, ~400M rows) is **never read directly by the surfaces**.
+Analysis + ML outputs are computed in overnight batch and written as
+**pre-aggregated marts in Hive-partitioned Parquet** — and the grain is
+**one mart per displayed box**. Each box's read is then a trivial
+partition-pruned select with zero serve-time aggregation, which is what
+makes the surface fast.
+
+Two invariants this design must hold:
+
+1. **Cross-box snapshot consistency.** Boxes within one view must derive from
+   the same `MA_S` snapshot / batch run, or their numbers disagree and
+   drill-through breaks (e.g. MLOps cross-pane highlight; Workspace Box 1
+   verdict ↔ Box 3 evidence being the same pack). Stamp every mart with its
+   source-snapshot id; render a view only from marts that share it.
+2. **Mart manifest + lineage.** With 5 surfaces × several boxes there are many
+   marts. Register each (grain, source snapshot, ML model version, last
+   refresh) so sprawl stays governed and the audit trail holds — the PULSE-89
+   lineage requirement applied to derived tables. Keep derivation logic DRY
+   (shared transforms → different marts), not copy-pasted SQL.
+
+The marts are derived + disposable: if one is wrong, recompute from `MA_S`.
+`MA_S` (Parquet) stays the replayable source of truth, and a **two-tier read**
+holds — marts on the fast path, an on-demand DuckDB query against `MA_S` for
+"show me the underlying sessions" drill-through.
+
+## Freshness: daily/overnight now, real-time later
+
+Starting scope is **last 6 months of data with overnight updates** — **daily
+freshness**. This is an **honest bank-infrastructure constraint** (the bank's
+infra is not real-time-ready yet), not a Pulse design limitation. Pulse will
+ultimately be real-time.
+
+Design implications:
+- **Stay real-time-capable.** Per-box marts are refresh-cadence-agnostic — a
+  box reads its mart identically whether refreshed nightly or continuously.
+  When the bank's infra supports real-time, only the **refresh job** changes
+  (batch → incremental/streaming); the mart contract and the surfaces do not.
+  Do not bake daily-only assumptions into the mart schema/contracts.
+- **Frame the positioning honestly:** "overnight batch today, real-time when
+  the bank's infrastructure supports it" — do not overclaim real-time.
+
 ## Constraints
 
 - Python 3.11; DuckDB + PyArrow only (no Spark). Single-node.
