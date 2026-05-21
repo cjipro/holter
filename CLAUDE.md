@@ -64,6 +64,23 @@ Hussain directed a final design-lock visit: review all three live HTML surfaces 
 
 **Residual backlog (NOT lock-blockers):** extend the signal strip to feed cards + MLOps decision frame; per-finding provenance once the engine returns it; strict no-pound-pandora £-to-hover demotion. Do not re-open these surfaces for re-scoring without (a) ≥1 residual shipped OR (b) real-analyst study findings.
 
+## 🏗️ Production front-end — BUILT on the work stack (2026-05-21)
+
+After the lock, Hussain directed building the surfaces on the **proven work-machine stack — Streamlit + FastAPI + DuckDB** (not the static-HTML scaffold, which is now the design spec). Full runbook + architecture: [`docs/front-end.md`](docs/front-end.md). Pattern: **locked design injected via `components.html` (iframe → pixel-parity); interactivity + live data via Streamlit-native controls querying PULSE-127.**
+
+Pipeline (all built + tested, **495 tests pass**, verified live via MCP on :8510): detection runtime (PULSE-126) → **DuckDB friction marts (PULSE-127, `pulse/serving/`)** → FastAPI `/friction/*` (HOL-5) → **Streamlit app (`holter/app/main.py`)**.
+
+| Ticket | Shipped |
+|---|---|
+| HOL-65 | Streamlit shell + routing; locked surfaces verbatim |
+| PULSE-127 | DuckDB read layer (per-session friction marts) |
+| HOL-66 | Home — live friction volume (`live · PULSE-127`); verdict engine-of-record |
+| HOL-67 | Workspace — journey selector drives VERDICT+EVIDENCE; RUN ANALYSIS → live metrics |
+| HOL-68 | MLOps — model + pack decision actions → in-session event log; live "business held" metric |
+| HOL-69 | serve/deploy runbook (`docs/front-end.md`); static `serve_*.py` relabelled design-spec |
+
+All on branch `hol65-streamlit-foundation` (stacked on `hol63-64-design-lock`; merge that PR first). Run: `py -m streamlit run holter/app/main.py`. **Backlog:** cohort cut into cards; per-surface iframe heights; full-size mart rebuild. The static `:8504/05/06` previews remain for design iteration.
+
 ## Project Identity
 
 - **Codename:** Holter (after Norman Holter, inventor of the wearable continuous ECG monitor, 1949)
@@ -190,8 +207,10 @@ work-tracking level, not the codebase level.
   joins/vulnerability/recalibration/transfer-gap/Chronicle-curator), and
   **PULSE-126 = the detection runtime keystone — BUILT + FrictionBench-validated
   v0.1 2026-05-21** (`pulse/detection/`, macro 0.985, 0 FPs, cell-10 PASS).
-  **PULSE-127 = next engine ticket** (current high water PULSE-126).
-- **HOL-1..64** (current high water as of 2026-05-21). Recent activity:
+  **PULSE-127 = DuckDB friction read layer — BUILT 2026-05-21** (`pulse/serving/`,
+  per-session marts → DuckDB read functions; feeds the FastAPI Platform API →
+  Streamlit front-end). **PULSE-128 = next engine ticket** (current high water PULSE-127).
+- **HOL-1..69** (current high water as of 2026-05-21). Recent activity:
   HOL-12..17 shipped (HOL-3 Workspace design-panel arc, design-locked
   2026-05-19); HOL-18..23 filed as Workspace residual backlog; HOL-4,
   HOL-24..30 shipped (HOL-4 Pulse Home design-panel arc, design-locked
@@ -213,8 +232,12 @@ work-tracking level, not the codebase level.
   detector), HOL-62 (pre-analysis foundation 4/6: define decision-owner).
   Then 2026-05-21 final design-lock pass: HOL-63 (multi-signal provenance
   strip on Home heroes + Workspace verdict — SHIPPED), HOL-64 (MLOps top-nav
-  stacking fix — SHIPPED). **HOL-65 = next UI/build ticket** (current high
-  water HOL-64).
+  stacking fix — SHIPPED). Then 2026-05-21 **production front-end build**
+  (Streamlit + FastAPI + DuckDB, `holter/app/`): HOL-65 (Streamlit foundation),
+  HOL-66 (Home live volume), HOL-67 (Workspace interactivity), HOL-68 (MLOps
+  decision actions), HOL-69 (serve/deploy runbook + scaffold relabel) — all
+  SHIPPED on branch `hol65-streamlit-foundation` (see `docs/front-end.md`).
+  **HOL-70 = next UI/build ticket** (current high water HOL-69).
 
 ## Locked decisions
 
