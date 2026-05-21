@@ -51,6 +51,7 @@ from holter.preview._shared import (  # noqa: E402
     render_glossary_panel,
     friction_volume_value,
     commercial_scaffold,
+    signal_provenance,
 )
 
 # PR-panel fix (Hettinger): the tier_color lookup in render_feed_card was
@@ -901,6 +902,37 @@ a { color: var(--blue); text-decoration: none; }
   font-size: 9px;
   letter-spacing: 0.4px;
 }
+
+/* ── Multi-signal provenance strip (pulse-multisignal-identity) ──────────── */
+/* Pulse fuses many signal classes; this strip shows which are wired vs
+   pending (pending tokens name their gating ticket on hover). Mirrors the
+   _shared.py strip used by Workspace/MLOps; Home keeps its own CSS copy. */
+.signal-strip {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  margin-top: 10px;
+}
+.signal-strip-label {
+  font-family: var(--mono); font-size: 9px; font-weight: 800;
+  letter-spacing: 1.4px; text-transform: uppercase;
+  color: var(--text-3); margin-right: 2px;
+}
+.signal-token {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: var(--mono); font-size: 9px; font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 2px 8px; border: 1px solid var(--border); border-radius: 2px;
+  color: var(--text-3); cursor: help;
+}
+.signal-token .signal-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: transparent; border: 1px solid currentColor; flex-shrink: 0;
+}
+.signal-token.on { color: var(--teal); border-color: var(--teal); }
+.signal-token.on .signal-dot {
+  background: var(--teal); border-color: var(--teal);
+  box-shadow: 0 0 6px var(--teal);
+}
+.signal-token.pending { color: var(--text-3); border-style: dashed; opacity: 0.85; }
 """
 
 
@@ -1020,6 +1052,7 @@ def render_hero(top_signal: dict, lens: str = "compliance") -> str:
     <div class="hero-card-headline">{headline}</div>
     <div class="hero-card-summary">{summary}</div>
     {hero_lift_html}
+    {signal_provenance()}
     {render_delta_strip(delta, preview_text)}
   </div>
   <span class="hero-card-cta" data-tooltip="{provenance_tooltip}">INVESTIGATE →</span>

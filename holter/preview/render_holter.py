@@ -91,6 +91,8 @@ from holter.preview._shared import (  # noqa: E402
     # Commercial signal (friction-volume primary, £ scaffold secondary)
     friction_volume_value,
     commercial_scaffold,
+    # Multi-signal provenance (pulse-multisignal-identity)
+    signal_provenance,
 )
 
 
@@ -474,6 +476,10 @@ def render_box1(packs: list[dict]) -> str:
             body_action_primary("ACTION", recommendation, tier_color)
             + commercial_block
             + body_chip_strip(supporting_chips)
+            # Multi-signal provenance — this verdict is fused from the signal
+            # classes Pulse has wired (behaviour + demographics today); voice /
+            # calls / vulnerability-classification are pending their joins.
+            + (signal_provenance() if cell_score else "")
             + body_lines([
                 (f'<strong>What this means:</strong> {verdict_synthesis}',
                  "var(--text-2)"),

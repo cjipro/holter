@@ -256,6 +256,65 @@ def _extract_quote(pack: dict) -> str:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Multi-signal provenance — Pulse is a MULTI-signal friction engine
+# ([[pulse-multisignal-identity]]), not an app-analytics tool. A finding's
+# provenance must show WHICH signal classes the engine fuses, and — honestly —
+# which are not yet wired. Today the detection runtime (PULSE-126) operates on
+# app-session behavioural events with demographic cohort context; the other
+# channels are pending their gating foundation tickets. The strip never
+# fabricates a signal: pending tokens name the ticket that unblocks them, so a
+# CCO/CRO reading a finding sees the multi-signal shape AND its honest state.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# (tooltip, fused-by-default) per signal class. Order = render order.
+_SIGNAL_META: dict[str, tuple[str, bool]] = {
+    "BEHAVIOUR": (
+        "App-session behavioural events (dwell / abandon / back-press) — "
+        "the detection runtime's primary signal (PULSE-126).", True),
+    "DEMOGRAPHICS": (
+        "Customer demographics (age_band, region, tenure) — fused as cohort "
+        "context from CUST_DIM.", True),
+    "VULNERABILITY": (
+        "First-class in Pulse, but the vulnerability-classification "
+        "methodology is unpublished (PULSE-122) — fused once the rubric ships.", False),
+    "VOICE": (
+        "Voice-of-customer (NPS, app-store reviews) — pending ingestion + "
+        "the cross-channel joins (PULSE-121).", False),
+    "CALLS": (
+        "Contact-centre / cross-channel signal — pending the cross-channel "
+        "joins (PULSE-121).", False),
+}
+
+SIGNAL_CLASSES: tuple[str, ...] = tuple(_SIGNAL_META)
+
+
+def signal_provenance(*, label: str = "SIGNALS", fused: set[str] | None = None) -> str:
+    """Render the multi-signal provenance strip — which signal classes are
+    fused into this finding vs pending their gating join.
+
+    `fused=None` uses the engine-state defaults in `_SIGNAL_META` (behaviour +
+    demographics wired; vulnerability/voice/calls pending). Pass an explicit
+    set to override per-finding once the engine returns provenance directly.
+    Domain vocabulary lives here as methodology terms, same as STATUS_GLOSSARY.
+    """
+    toks = []
+    for cls, (tip, default_on) in _SIGNAL_META.items():
+        on = (cls in fused) if fused is not None else default_on
+        state = "on" if on else "pending"
+        safe = tip.replace('"', "&quot;")
+        toks.append(
+            f'<span class="signal-token {state}" data-tooltip="{safe}">'
+            f'<span class="signal-dot"></span>{cls}</span>'
+        )
+    return (
+        f'<div class="signal-strip">'
+        f'<span class="signal-strip-label">{label}</span>'
+        f'{"".join(toks)}'
+        f'</div>'
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Color maps — semantic palette for tier badges + chips
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -1326,4 +1385,33 @@ details[open] > .body-disclosure-summary::after { content: " ▴"; }
 .holter-journey-cell-submeta {
   font-size: 9px; color: var(--text-3); font-family: var(--mono);
 }
+
+/* ── Multi-signal provenance strip (pulse-multisignal-identity) ──────────── */
+/* Shows which signal classes the engine fuses into a finding; `pending`
+   tokens are dashed/dim and name their gating ticket on hover. */
+.signal-strip {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+}
+.signal-strip-label {
+  font-family: var(--mono); font-size: 8px; font-weight: 800;
+  letter-spacing: 1.4px; text-transform: uppercase;
+  color: var(--text-3); margin-right: 2px;
+}
+.signal-token {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: var(--mono); font-size: 9px; font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 2px 7px; border: 1px solid var(--border); border-radius: 2px;
+  color: var(--text-3); cursor: help;
+}
+.signal-token .signal-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: transparent; border: 1px solid currentColor; flex-shrink: 0;
+}
+.signal-token.on { color: var(--teal); border-color: var(--teal); }
+.signal-token.on .signal-dot {
+  background: var(--teal); border-color: var(--teal);
+  box-shadow: 0 0 6px var(--teal);
+}
+.signal-token.pending { color: var(--text-3); border-style: dashed; opacity: 0.85; }
 """
