@@ -56,7 +56,7 @@ Audit screenshots: `dist/audit/hol4-home-*.png`, `dist/audit/hol3-workspace-*.pn
 - **Public product:** CJI Pulse — almost-real-time decision intelligence (one of four CJI products: Sonar / Reckoner / **Pulse** / Lever)
 - **Importable Python package:** `pulse` — engine identity preserved; never `holter` in code
 - **License:** Apache-2.0
-- **Status:** scaffolded 2026-05-17 under PULSE-90; engine code (`pulse/`) currently lives in `cjipro/while-sleeping` pending migration
+- **Status:** scaffolded 2026-05-17 under PULSE-90; engine code (`pulse/`) **migrated into this repo** under PULSE-91 — `pulse/` (schema, adapters, frictionbench, lineage, synthesis, value, risk, diagnosis, decision_packs, detection) lives and is tested here (485 tests)
 
 ## Sister concerns
 
@@ -75,7 +75,7 @@ See [[cross-repo-collaboration]].
 
 | Repo | Path | Role |
 |---|---|---|
-| `cjipro/mil_streamlit` (`while-sleeping`) | `C:\Users\hussa\while-sleeping` | MIL sovereign engine + Sonar publisher + Hodos seed. Hosts pulse/ pending migration here. |
+| `cjipro/mil_streamlit` (`while-sleeping`) | `C:\Users\hussa\while-sleeping` | MIL sovereign engine + Sonar publisher + Hodos seed. Original home of pulse/ (now migrated into this repo under PULSE-91). |
 | `cjipro/taq-app` | `C:\Users\hussa\taq-app` | Closed synthetic banking environment. Emits telemetry Pulse consumes via the crossing contract. |
 | `cjipro/holter` (this repo) | `C:\Users\hussa\holter` | Pulse engine + UI build. |
 
@@ -170,8 +170,14 @@ work-tracking level, not the codebase level.
   Agentic AI placement worked example); PULSE-107 filed 2026-05-19 post-audit
   (extend ValueScore with `estimated_monthly_lift_gbp` + bootstrap CI +
   `arpu_per_journey` block in `bank_policy.yaml` — blocks HOL-55/56/57).
-  **PULSE-108 = next engine ticket.**
-- **HOL-1..57** (current high water as of 2026-05-19 post-audit). Recent activity:
+  Then 2026-05-20/21: PULSE-108..118 (telephony linkage + data-layer panel
+  set), PULSE-119/120 (decision-impact tracking methodology + trackable-record
+  schema), PULSE-121..125 (the 6-firm-panel pre-analysis foundations:
+  joins/vulnerability/recalibration/transfer-gap/Chronicle-curator), and
+  **PULSE-126 = the detection runtime keystone — BUILT + FrictionBench-validated
+  v0.1 2026-05-21** (`pulse/detection/`, macro 0.985, 0 FPs, cell-10 PASS).
+  **PULSE-127 = next engine ticket** (current high water PULSE-126).
+- **HOL-1..62** (current high water as of 2026-05-21). Recent activity:
   HOL-12..17 shipped (HOL-3 Workspace design-panel arc, design-locked
   2026-05-19); HOL-18..23 filed as Workspace residual backlog; HOL-4,
   HOL-24..30 shipped (HOL-4 Pulse Home design-panel arc, design-locked
@@ -185,8 +191,13 @@ work-tracking level, not the codebase level.
   same-day (Beck tests · Metz pane-renderer extraction · Hickey eventLog
   schema + body-scope · van Rossum CSS extract · Hettinger type discipline);
   HOL-55..57 filed as commercial-value-audit remediation arc (Home dual-queue
-  · Workspace headline Value · MLOps Unblocks affordance — all blocked by
-  PULSE-107). **HOL-58 = next UI/build ticket.**
+  · Workspace headline Value · MLOps Unblocks affordance — blocked by
+  PULSE-107) and SHIPPED, then friction-volume-reworked per [[no-pound-pandora]].
+  Then 2026-05-20/21: HOL-58/59 (PR-panel refactor backlog: lift-strip extract
+  · Protocol typing), HOL-60 (retroactive friction-volume surface rework),
+  HOL-61 (Workspace EVIDENCE impact overlay — blocked by PULSE-119/120 +
+  detector), HOL-62 (pre-analysis foundation 4/6: define decision-owner).
+  **HOL-63 = next UI/build ticket** (current high water HOL-62).
 
 ## Locked decisions
 
@@ -591,7 +602,7 @@ Diagnosis can OVERRIDE the 2x2: `JOURNEY_PROBLEM` → "fix the journey" verb reg
 - [`docs/sessions/2026-05-18.md`](docs/sessions/2026-05-18.md) — 9-pack fan-out + briefing/canvas previews + Value/Risk architecture + 8 tickets filed + HOL-10 phases 1+2 + 8502 reroute + **evening: full v2 spine shipped (10 tickets PULSE-99/100/101/102/103/104/105/106 + HOL-9/HOL-11)**
 - [`docs/sessions/2026-05-19.md`](docs/sessions/2026-05-19.md) — HOL-3 design-lock (composite 7.40, panel mean 7.89) + HOL-4 design-lock (composite 8.20, panel mean 8.28, unanimous) + virtual PR-panel pre-push gate (3-panel × 3-voice code review with Torvalds/Hickey/Kernighan · van Rossum/Hettinger/Cannon · Beck/Fowler/Metz) + Barclays scrub (closed pre-existing OSS naming-discipline leak from commit `cb188a9`) + **pushed 35 commits to `cjipro/holter` main at `8f8704f`**. 16 tickets shipped, 14 filed as backlog, 27 distinct expert voices used.
 
-## v1 design spine (already shipped, lives in while-sleeping pending migration)
+## v1 design spine (shipped, now migrated into this repo under PULSE-91)
 
 | Ticket | Artefact |
 |---|---|
@@ -599,8 +610,9 @@ Diagnosis can OVERRIDE the 2x2: `JOURNEY_PROBLEM` → "fix the journey" verb reg
 | PULSE-88 | FrictionBench v0.1 public benchmark (`pulse/frictionbench/`) |
 | PULSE-89 | Lineage chain + synthesis interface + decision-pack metadata + audit query spec |
 
-All three commits live on `cjipro/mil_streamlit` `main` (GitHub + GitLab dual-push).
-163 tests across `pulse/tests/` passing.
+These originally landed on `cjipro/mil_streamlit` `main` (GitHub + GitLab dual-push),
+then migrated here under PULSE-91. `pulse/` now lives + is tested in this repo
+(485 tests across `pulse/tests/` passing as of 2026-05-21).
 
 ## Environment
 
