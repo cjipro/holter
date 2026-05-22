@@ -40,13 +40,17 @@ A surface that does not prominently surface `COMMERCIAL-OPPORTUNITY` is failing 
 
 Audit screenshots: `dist/audit/hol4-home-*.png`, `dist/audit/hol3-workspace-*.png`, `dist/audit/hol6-mlops-*.png`.
 
-## 🎯 Next session entry point (set 2026-05-21)
+## 🎯 Next session entry point (set 2026-05-22)
 
 **FIRST ACTION every session: read the WHOLE memory** — not just `MEMORY.md`'s index, but enough of the linked entries to reconstruct full context before acting. Hussain's standing instruction (2026-05-21). Especially re-read [[commercial-value-first]] + [[dont-lead-with-governance]] + [[pulse-multisignal-identity]] + [[no-pound-pandora]] before any user-facing framing.
 
 **Working mode now = cross-repo collaborative ([[cross-repo-collaboration]]).** Remove the silos between `holter`/Pulse · `while-sleeping`/MIL · `taq-app` · Hodos. Plan and design across all four concerns, not one repo at a time. **Keep the safety/contract boundaries** that are about governance not silos: real-bank PII never enters any OSS repo; `taq`/`real_bank` naming discipline; shared `.env` via `../while-sleeping/.env`; the TAQ↔Pulse crossing contracts.
 
 **Where the build is:** the remediation arc (PULSE-107 + HOL-55/56/57) SHIPPED, then the £-as-primary framing was corrected to friction-volume ([[no-pound-pandora]]). The 10-firm game-changer panel ran ([[pulse-gamechanger-verdict]]) → conditional YES, keystone = detection runtime. **PULSE-126 detection runtime v0.1 is now BUILT + FrictionBench-validated** (`pulse/detection/`, macro 0.985, 0 FPs, cell-10 PASS, pushed). What's still open: the **synthetic→real transfer gap (PULSE-124) is unmeasured** — the real headline metric. Pre-analysis foundations PULSE-121..125 + HOL-62 gate the real-data run.
+
+**SHIPPED since (2026-05-21/22):** the final design-lock pass (HOL-63 multi-signal strip + HOL-64 nav fix) AND the **production front-end** (HOL-65..69 + PULSE-127) — Streamlit + FastAPI + DuckDB, locked surfaces with live data + interactivity — all merged to `main` (`docs/front-end.md`, 495 tests). HOL + PULSE boards reconciled: shipped tickets closed; PULSE-84 closure audit run.
+
+**🎯 NEXT FOCUS (set 2026-05-22): DATA PIPELINES + MARTS** (MA_D → MA_S sessionisation → marts). **Cross-repo home-split** (load-bearing, full detail in [[data-pipeline-marts-plan]]): Pulse-engine pipeline + marts build in **holter/`pulse/` on DuckDB** (PULSE-110 / 113–117 / 39 + the rolling-28d baseline; PySpark rejected); **while-sleeping** owns the legacy data infra (`mil/` MA_S/mart code, data dictionary, contracts) + MIL/Sonar + Hodos seed + `.env`; **real-bank ingestion** stays on the work machine. Guardrail: don't rebuild engine-pipeline pieces in while-sleeping (PULSE-91 consolidated the engine here). **Both a holter session and a while-sleeping session are in play** — read the WHOLE memory of whichever at session start.
 
 **Defer:** HOL-49..54 residual backlog, HOL-7 (gated on registry ≥40 packs), HOL-47/48 (engine-blocked). Remaining PULSE-126 build items (rolling-28d baseline service, cohort split, bootstrap-CI calibration) are backlog. Any panel re-scoring of HOL-3/4/6 is premature.
 
